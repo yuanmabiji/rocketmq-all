@@ -112,6 +112,7 @@ public class BrokerOuterAPI {
     }
 
 
+
     public List<RegisterBrokerResult> registerBrokerAll(
         final String clusterName,
         final String brokerAddr,

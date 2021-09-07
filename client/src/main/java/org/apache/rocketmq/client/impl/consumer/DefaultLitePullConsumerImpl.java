@@ -695,7 +695,7 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
                     log.info("The message queue not be able to poll, because it's dropped. group={}, messageQueue={}", defaultLitePullConsumer.getConsumerGroup(), this.messageQueue);
                     return;
                 }
-
+                //
                 if (consumeRequestCache.size() * defaultLitePullConsumer.getPullBatchSize() > defaultLitePullConsumer.getPullThresholdForAll()) {
                     scheduledThreadPoolExecutor.schedule(this, PULL_TIME_DELAY_MILLS_WHEN_FLOW_CONTROL, TimeUnit.MILLISECONDS);
                     if ((consumeRequestFlowControlTimes++ % 1000) == 0)
@@ -705,7 +705,7 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
 
                 long cachedMessageCount = processQueue.getMsgCount().get();
                 long cachedMessageSizeInMiB = processQueue.getMsgSize().get() / (1024 * 1024);
-
+                // 【消费者流控1】消费者本地缓存消息数超过pullThresholdForQueue时，默认1000,则进行流量控制：延迟50ms再去拉取消息
                 if (cachedMessageCount > defaultLitePullConsumer.getPullThresholdForQueue()) {
                     scheduledThreadPoolExecutor.schedule(this, PULL_TIME_DELAY_MILLS_WHEN_FLOW_CONTROL, TimeUnit.MILLISECONDS);
                     if ((queueFlowControlTimes++ % 1000) == 0) {
@@ -715,7 +715,7 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
                     }
                     return;
                 }
-
+                // 【消费者流控2】消费者本地缓存消息大小超过pullThresholdSizeForQueue时，默认100MB。
                 if (cachedMessageSizeInMiB > defaultLitePullConsumer.getPullThresholdSizeForQueue()) {
                     scheduledThreadPoolExecutor.schedule(this, PULL_TIME_DELAY_MILLS_WHEN_FLOW_CONTROL, TimeUnit.MILLISECONDS);
                     if ((queueFlowControlTimes++ % 1000) == 0) {
@@ -725,7 +725,9 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
                     }
                     return;
                 }
+                // 【消费者流控3】消费者本地缓存消息跨度超过consumeConcurrentlyMaxSpan时，默认2000。
 
+                // 【亮点】消费者流控的结果是降低拉取频率即通过延迟拉取的方式
                 if (processQueue.getMaxSpan() > defaultLitePullConsumer.getConsumeMaxSpan()) {
                     scheduledThreadPoolExecutor.schedule(this, PULL_TIME_DELAY_MILLS_WHEN_FLOW_CONTROL, TimeUnit.MILLISECONDS);
                     if ((queueMaxSpanFlowControlTimes++ % 1000) == 0) {

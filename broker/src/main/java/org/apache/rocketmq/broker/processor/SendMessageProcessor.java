@@ -105,6 +105,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
     @Override
     public boolean rejectRequest() {
+        // commitLog文件被锁时间超过osPageCacheBusyTimeOutMills时，参数默认为1000ms，返回流控。
+        // 如果开启transientStorePoolEnable == true，且broker为异步刷盘的主机，且transientStorePool中资源不足，拒绝当前send请求，返回流控。
         return this.brokerController.getMessageStore().isOSPageCacheBusy() ||
             this.brokerController.getMessageStore().isTransientStorePoolDeficient();
     }

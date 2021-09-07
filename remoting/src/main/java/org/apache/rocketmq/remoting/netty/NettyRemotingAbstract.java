@@ -241,7 +241,16 @@ public abstract class NettyRemotingAbstract {
                     }
                 }
             };
+            // 【生产者流控】之所以在broker端做，因为producer不知道broker的消息堆积情况
+            /*
+                生产者流控：
+                commitLog文件被锁时间超过osPageCacheBusyTimeOutMills时，参数默认为1000ms，返回流控。
+                如果开启transientStorePoolEnable == true，且broker为异步刷盘的主机，且transientStorePool中资源不足，拒绝当前send请求，返回流控。
+                broker每隔10ms检查send请求队列头部请求的等待时间，如果超过waitTimeMillsInSendQueue，默认200ms，拒绝当前send请求，返回流控。
+                broker通过拒绝send 请求方式实现流量控制。
 
+                注意，生产者流控，不会尝试消息重投。
+             */
             if (pair.getObject1().rejectRequest()) {
                 final RemotingCommand response = RemotingCommand.createResponseCommand(RemotingSysResponseCode.SYSTEM_BUSY,
                     "[REJECTREQUEST]system busy, start flow control for a while");

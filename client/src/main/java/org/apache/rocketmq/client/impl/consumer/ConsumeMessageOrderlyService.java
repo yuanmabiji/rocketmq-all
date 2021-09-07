@@ -86,7 +86,7 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
         this.scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl("ConsumeMessageScheduledThread_"));
     }
 
-    public void start() {
+    public void start() {// 【QUESTION1】ConsumeMessageOrderlyService.this.defaultMQPushConsumerImpl.messageModel()和defaultMQPushConsumerImpl.messageModel()有啥区别？
         if (MessageModel.CLUSTERING.equals(ConsumeMessageOrderlyService.this.defaultMQPushConsumerImpl.messageModel())) {
             this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
                 @Override

@@ -45,15 +45,18 @@ import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 import org.apache.rocketmq.common.sysflag.TopicSysFlag;
 import org.apache.rocketmq.remoting.common.RemotingUtil;
 
+/**
+ * 这是个路由信息管理类，核心的一个类
+ */
 public class RouteInfoManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
     private final static long BROKER_CHANNEL_EXPIRED_TIME = 1000 * 60 * 2;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private final HashMap<String/* topic */, List<QueueData>> topicQueueTable;
-    private final HashMap<String/* brokerName */, BrokerData> brokerAddrTable;
-    private final HashMap<String/* clusterName */, Set<String/* brokerName */>> clusterAddrTable;
-    private final HashMap<String/* brokerAddr */, BrokerLiveInfo> brokerLiveTable;
-    private final HashMap<String/* brokerAddr */, List<String>/* Filter Server */> filterServerTable;
+    private final HashMap<String/* topic */, List<QueueData>> topicQueueTable; // 主题队列路由信息，维护了Topic与QueueData列表的对应关系，而QueueData存储了brokerName和读写队列数量等信息
+    private final HashMap<String/* brokerName */, BrokerData> brokerAddrTable; // Broker信息，维护了brokerName与BrokerData的对应关系，BrokerData存储了broker集群名，brokerName，brokerId和broker IP等信息
+    private final HashMap<String/* clusterName */, Set<String/* brokerName */>> clusterAddrTable; // broker集群信息，维护了broker集群名和brokerName集合的对应关系
+    private final HashMap<String/* brokerAddr */, BrokerLiveInfo> brokerLiveTable; // broker状态信息，维护了broker IP与BrokerLiveInfo的映射关系，BrokerLiveInfo存储了上一次broker心跳更新的时间戳，dataversion,netty的channel和haServerAddr等信息
+    private final HashMap<String/* brokerAddr */, List<String>/* Filter Server */> filterServerTable; // 某个broker对应的Filter Server列表，维护了某个broker IP与Filter Server名集合的映射关系
 
     public RouteInfoManager() {
         this.topicQueueTable = new HashMap<String, List<QueueData>>(1024);
@@ -756,7 +759,7 @@ class BrokerLiveInfo {
     private long lastUpdateTimestamp;
     private DataVersion dataVersion;
     private Channel channel;
-    private String haServerAddr;
+    private String haServerAddr; // 对于master Broker，haServerAddr值为slave broker的ip:port；对于slave broker，haServerAddr值为空。
 
     public BrokerLiveInfo(long lastUpdateTimestamp, DataVersion dataVersion, Channel channel,
         String haServerAddr) {

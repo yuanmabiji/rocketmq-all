@@ -136,13 +136,13 @@ public class NamesrvStartup {
         if (null == controller) {
             throw new IllegalArgumentException("NamesrvController is null");
         }
-
+        // 初始化：初始化nameServer服务端，业务线程池，registerProcessor以及开启scanNotActiveBroker和printAllPeriodically的两个定时任务，此外，如果开启了Tls，进行一些初始化逻辑
         boolean initResult = controller.initialize();
-        if (!initResult) {
+        if (!initResult) { // 初始化失败得退出
             controller.shutdown();
             System.exit(-3);
         }
-
+        // 注册jvm钩子，用来当jvm退出时关闭服务端和服务端线程池资源
         Runtime.getRuntime().addShutdownHook(new ShutdownHookThread(log, new Callable<Void>() {
             @Override
             public Void call() throws Exception {
@@ -150,7 +150,7 @@ public class NamesrvStartup {
                 return null;
             }
         }));
-
+        // 前面初始化了相关资源，此时就要启动资源
         controller.start();
 
         return controller;

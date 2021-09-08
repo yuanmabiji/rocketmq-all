@@ -76,14 +76,14 @@ public class NamesrvController {
     public boolean initialize() {
 
         this.kvConfigManager.load();
-
+        // 进行netty的主从线程池的新建，publicExecutor线程池的新建以及若开启TLS的话进行TLS相关逻辑的初始化
         this.remotingServer = new NettyRemotingServer(this.nettyServerConfig, this.brokerHousekeepingService);
-
+        // TODO 【QUESTION2】 remotingExecutor与NettyRemotingServer里的publicExecutor有啥区别？若registerProcessor时若传入的executor为空，则用publicExecutor？
         this.remotingExecutor =
             Executors.newFixedThreadPool(nettyServerConfig.getServerWorkerThreads(), new ThreadFactoryImpl("RemotingExecutorThread_"));
-
+        // 注册processor，默认注册DefaultRequestProcessor实例
         this.registerProcessor();
-
+        // 开启scanNotActiveBroker定时任务，剔除“死掉”的broker
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -91,7 +91,7 @@ public class NamesrvController {
                 NamesrvController.this.routeInfoManager.scanNotActiveBroker();
             }
         }, 5, 10, TimeUnit.SECONDS);
-
+        // 开启printAllPeriodically定时任务
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -99,7 +99,7 @@ public class NamesrvController {
                 NamesrvController.this.kvConfigManager.printAllPeriodically();
             }
         }, 1, 10, TimeUnit.MINUTES);
-
+        // 如果开启了TLS，进行相关TLS逻辑的初始化，其中包括了FileWatchService实例的创建及赋值
         if (TlsSystemConfig.tlsMode != TlsMode.DISABLED) {
             // Register a listener to reload SslContext
             try {
@@ -153,8 +153,9 @@ public class NamesrvController {
     }
 
     public void start() throws Exception {
+        // 开启服务器相关资源
         this.remotingServer.start();
-
+        // 这个针对TLS的，如果有开启TLS的话，那么会开启FileWatchService线程，具体做啥的还没深究
         if (this.fileWatchService != null) {
             this.fileWatchService.start();
         }

@@ -98,13 +98,13 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         super(nettyServerConfig.getServerOnewaySemaphoreValue(), nettyServerConfig.getServerAsyncSemaphoreValue());
         this.serverBootstrap = new ServerBootstrap();
         this.nettyServerConfig = nettyServerConfig;
-        this.channelEventListener = channelEventListener;
+        this.channelEventListener = channelEventListener; // 如果是name server的话，赋值brokerHousekeepingService实例
 
         int publicThreadNums = nettyServerConfig.getServerCallbackExecutorThreads();
         if (publicThreadNums <= 0) {
             publicThreadNums = 4;
         }
-
+        // TODO 【QUESTION3】publicExecutor这个线程池作用是啥
         this.publicExecutor = Executors.newFixedThreadPool(publicThreadNums, new ThreadFactory() {
             private AtomicInteger threadIndex = new AtomicInteger(0);
 
@@ -153,7 +153,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
                 }
             });
         }
-
+        // TLS相关逻辑
         loadSslContext();
     }
 
@@ -178,9 +178,11 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
             && nettyServerConfig.isUseEpollNativeSelector()
             && Epoll.isAvailable();
     }
-
+    //
     @Override
     public void start() {
+        // 【QUESTION4】已经有了eventLoopGroupBoss和eventLoopGroupSelector线程池，这个defaultEventExecutorGroup又是干嘛的？
+        // 【ANSWER4】此线程池用于netty的编解码，HandshakeHandler，NettyEncoder，NettyConnectManageHandler和NettyServerHandler
         this.defaultEventExecutorGroup = new DefaultEventExecutorGroup(
             nettyServerConfig.getServerWorkerThreads(),
             new ThreadFactory() {
@@ -192,11 +194,17 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
                     return new Thread(r, "NettyServerCodecThread_" + this.threadIndex.incrementAndGet());
                 }
             });
-
+        /*
+            prepareSharableHandlers()：
+            handshakeHandler = new HandshakeHandler(TlsSystemConfig.tlsMode);
+            encoder = new NettyEncoder();
+            connectionManageHandler = new NettyConnectManageHandler();
+            serverHandler = new NettyServerHandler();
+         */
         prepareSharableHandlers();
-
+        // 配置netty的childHandler，包括编解码器，server handler等
         ServerBootstrap childHandler =
-            this.serverBootstrap.group(this.eventLoopGroupBoss, this.eventLoopGroupSelector)
+            this.serverBootstrap.group(this.eventLoopGroupBoss, this.eventLoopGroupSelector) // 配置主从线程池
                 .channel(useEpoll() ? EpollServerSocketChannel.class : NioServerSocketChannel.class)
                 .option(ChannelOption.SO_BACKLOG, 1024)
                 .option(ChannelOption.SO_REUSEADDR, true)
@@ -215,7 +223,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
                                 new NettyDecoder(),
                                 new IdleStateHandler(0, 0, nettyServerConfig.getServerChannelMaxIdleTimeSeconds()),
                                 connectionManageHandler,
-                                serverHandler
+                                serverHandler // 注意：serverHandler交给了defaultEventExecutorGroup线程池执行，而没有用eventLoopGroupSelector这个线程池（IO线程），注意defaultEventExecutorGroup在执行serverHandler的方法时，也会将相关业务处理逻辑交给业务线城池
                             );
                     }
                 });
@@ -225,17 +233,17 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         }
 
         try {
-            ChannelFuture sync = this.serverBootstrap.bind().sync();
+            ChannelFuture sync = this.serverBootstrap.bind().sync(); // 开启服务器端口
             InetSocketAddress addr = (InetSocketAddress) sync.channel().localAddress();
             this.port = addr.getPort();
         } catch (InterruptedException e1) {
             throw new RuntimeException("this.serverBootstrap.bind().sync() InterruptedException", e1);
         }
 
-        if (this.channelEventListener != null) {
-            this.nettyEventExecutor.start();
+        if (this.channelEventListener != null) {// 如果是name server的话，赋值brokerHousekeepingService实例,这里不为null
+            this.nettyEventExecutor.start(); // 开启nettyEventExecutor线程，进行异步处理NettyEvent（CONNECT,CLOSE,IDLE,EXCEPTION）事件，然后对相应监听器进行回调
         }
-
+        // TODO 待深究
         this.timer.scheduleAtFixedRate(new TimerTask() {
 
             @Override

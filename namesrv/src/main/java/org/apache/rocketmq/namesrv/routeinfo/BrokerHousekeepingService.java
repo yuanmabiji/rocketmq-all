@@ -23,6 +23,13 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.namesrv.NamesrvController;
 import org.apache.rocketmq.remoting.ChannelEventListener;
 
+/**
+ * rokerHousekeepingService实现了ChannelEventListener接口，除了onChannelConnect外，
+ * 其余各个方法均委托给namesrvController的routeInfoManager的onChannelDestroy方法，
+ * 该方法主要是将下线的broker的信息从内存的路由映射中删除掉。
+ *
+ * 参考链接：https://www.jianshu.com/p/6b8fd7e99939
+ */
 public class BrokerHousekeepingService implements ChannelEventListener {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
     private final NamesrvController namesrvController;

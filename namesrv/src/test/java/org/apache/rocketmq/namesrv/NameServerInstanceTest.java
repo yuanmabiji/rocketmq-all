@@ -32,7 +32,7 @@ public class NameServerInstanceTest {
     public void startup() throws Exception {
         nettyServerConfig.setListenPort(9876);
         nameSrvController = new NamesrvController(namesrvConfig, nettyServerConfig);
-        boolean initResult = nameSrvController.initialize();
+        boolean initResult = nameSrvController.initialize(); // 先初始化nameServer的一些资源
         assertThat(initResult).isTrue();
         nameSrvController.start();
     }

@@ -203,7 +203,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
     public DefaultMQProducer(final String namespace, final String producerGroup, RPCHook rpcHook) {
         this.namespace = namespace;
         this.producerGroup = producerGroup;
-        defaultMQProducerImpl = new DefaultMQProducerImpl(this, rpcHook);
+        defaultMQProducerImpl = new DefaultMQProducerImpl(this, rpcHook);// DefaultMQProducer的保持了DefaultMQProducerImpl的引用，同时DefaultMQProducerImpl也保持了DefaultMQProducer的引用，互相引用
     }
 
     /**
@@ -270,7 +270,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
     public void start() throws MQClientException {
         this.setProducerGroup(withNamespace(this.producerGroup));
         this.defaultMQProducerImpl.start();
-        if (null != traceDispatcher) {
+        if (null != traceDispatcher) {// traceDispatcher默认为Null
             try {
                 traceDispatcher.start(this.getNamesrvAddr(), this.getAccessChannel());
             } catch (MQClientException e) {

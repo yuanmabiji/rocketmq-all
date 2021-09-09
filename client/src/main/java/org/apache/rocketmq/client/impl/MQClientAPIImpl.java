@@ -185,11 +185,11 @@ public class MQClientAPIImpl {
         RPCHook rpcHook, final ClientConfig clientConfig) {
         this.clientConfig = clientConfig;
         topAddressing = new TopAddressing(MixAll.getWSAddr(), clientConfig.getUnitName());
-        this.remotingClient = new NettyRemotingClient(nettyClientConfig, null);
+        this.remotingClient = new NettyRemotingClient(nettyClientConfig, null);// 【重要】与网络打交道的NettyRemotingClient实例出现了
         this.clientRemotingProcessor = clientRemotingProcessor;
 
-        this.remotingClient.registerRPCHook(rpcHook);
-        this.remotingClient.registerProcessor(RequestCode.CHECK_TRANSACTION_STATE, this.clientRemotingProcessor, null);
+        this.remotingClient.registerRPCHook(rpcHook);// 客户端的不同RequestCode都对应同一个clientRemotingProcessor，ClientRemotingProcessor类的processRequest再根据不同RequestCode执行不同的请求逻辑
+        this.remotingClient.registerProcessor(RequestCode.CHECK_TRANSACTION_STATE, this.clientRemotingProcessor, null);// 这里executor参数传null，那么默认会用publicExecutor来执行ClientRemotingProcessor
 
         this.remotingClient.registerProcessor(RequestCode.NOTIFY_CONSUMER_IDS_CHANGED, this.clientRemotingProcessor, null);
 

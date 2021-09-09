@@ -131,30 +131,30 @@ public class MQClientInstance {
     }
 
     public MQClientInstance(ClientConfig clientConfig, int instanceIndex, String clientId, RPCHook rpcHook) {
-        this.clientConfig = clientConfig;
+        this.clientConfig = clientConfig;// 各种配置赋值
         this.instanceIndex = instanceIndex;
         this.nettyClientConfig = new NettyClientConfig();
         this.nettyClientConfig.setClientCallbackExecutorThreads(clientConfig.getClientCallbackExecutorThreads());
         this.nettyClientConfig.setUseTLS(clientConfig.isUseTLS());
-        this.clientRemotingProcessor = new ClientRemotingProcessor(this);
-        this.mQClientAPIImpl = new MQClientAPIImpl(this.nettyClientConfig, this.clientRemotingProcessor, rpcHook, clientConfig);
-
+        this.clientRemotingProcessor = new ClientRemotingProcessor(this);// 赋值ClientRemotingProcessor实例，同时ClientRemotingProcessor保持了MQClientInstance的引用，又是互相引用
+        this.mQClientAPIImpl = new MQClientAPIImpl(this.nettyClientConfig, this.clientRemotingProcessor, rpcHook, clientConfig);// MQClientAPIImpl是一个很重要的类，里面保持了NettyRemotingClient和ClientRemotingProcessor实例的引用
+        // 将name server地址通过MQClientAPIImpl间接设置进NettyRemotingClient的namesrvAddrList列表
         if (this.clientConfig.getNamesrvAddr() != null) {
             this.mQClientAPIImpl.updateNameServerAddressList(this.clientConfig.getNamesrvAddr());
             log.info("user specified name server address: {}", this.clientConfig.getNamesrvAddr());
         }
 
         this.clientId = clientId;
+        // 【重要】因为MQClientInstance持有了MQClientAPIImpl，而MQClientAPIImpl又持有了NettyRemotingClient实例，而NettyRemotingClient实例是与网络打交道的家伙，因此MQAdminImpl，ClientRemotingProcessor等类持有了MQClientInstance实例，目的就是为了最终NettyRemotingClient实例与网络打交道
+        this.mQAdminImpl = new MQAdminImpl(this); // MQAdminImpl和MQClientInstance互相引用
 
-        this.mQAdminImpl = new MQAdminImpl(this);
+        this.pullMessageService = new PullMessageService(this);// PullMessageService和MQClientInstance互相引用
 
-        this.pullMessageService = new PullMessageService(this);
-
-        this.rebalanceService = new RebalanceService(this);
-
+        this.rebalanceService = new RebalanceService(this);// RebalanceService和MQClientInstance互相引用
+        // 这里新建一个DefaultMQProducer实例，group名称为CLIENT_INNER_PRODUCER，看名字像是内部使用 TODO 【QUESTION8】作用是啥
         this.defaultMQProducer = new DefaultMQProducer(MixAll.CLIENT_INNER_PRODUCER_GROUP);
         this.defaultMQProducer.resetClientConfig(clientConfig);
-
+        // ConsumerStatsManager用于统计一些mq的度量数据比如CONSUME_OK_TPS，CONSUME_FAILED_TPS，PULL_TPS等，用传进去的同一个scheduledExecutorService进行定时统计数据
         this.consumerStatsManager = new ConsumerStatsManager(this.scheduledExecutorService);
 
         log.info("Created a new client Instance, InstanceIndex:{}, ClientID:{}, ClientConfig:{}, ClientVersion:{}, SerializerType:{}",
@@ -238,16 +238,16 @@ public class MQClientInstance {
                     if (null == this.clientConfig.getNamesrvAddr()) {
                         this.mQClientAPIImpl.fetchNameServerAddr();
                     }
-                    // Start request-response channel
-                    this.mQClientAPIImpl.start();
+                    // Start request-response channel：实质是调用NettyRemotingClient.start方法来初始化netty客户端，但还未连接nameserver和broker等
+                    this.mQClientAPIImpl.start();// MQClientAPIImpl实例
                     // Start various schedule tasks
                     this.startScheduledTask();
                     // Start pull service
-                    this.pullMessageService.start();
+                    this.pullMessageService.start();// 开启PullMessageService线程
                     // Start rebalance service
-                    this.rebalanceService.start();
+                    this.rebalanceService.start(); // 开启RebalanceService线程
                     // Start push service
-                    this.defaultMQProducer.getDefaultMQProducerImpl().start(false);
+                    this.defaultMQProducer.getDefaultMQProducerImpl().start(false);// TODO 【QUESTION11】这里感觉重复执行一遍了，defaultMQProducer作用是啥？
                     log.info("the client factory [{}] start OK", this.clientId);
                     this.serviceState = ServiceState.RUNNING;
                     break;
@@ -258,9 +258,9 @@ public class MQClientInstance {
             }
         }
     }
-
+    // 都是用同一个scheduledExecutorService线程池（单线程）执行不同的定时任务
     private void startScheduledTask() {
-        if (null == this.clientConfig.getNamesrvAddr()) {
+        if (null == this.clientConfig.getNamesrvAddr()) {// 若未设置name server地址，那么定期fetchNameServerAddr
             this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
                 @Override
@@ -273,7 +273,7 @@ public class MQClientInstance {
                 }
             }, 1000 * 10, 1000 * 60 * 2, TimeUnit.MILLISECONDS);
         }
-
+        // 【重要】每隔10秒定期从name server获取最新topic路由信息
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -285,7 +285,7 @@ public class MQClientInstance {
                 }
             }
         }, 10, this.clientConfig.getPollNameServerInterval(), TimeUnit.MILLISECONDS);
-
+        // 1，每隔30秒从brokerAddrTable集合清理下线broker（因为client会每隔10秒会从name server拉取broker信息，而Name server通过broker的心跳感知broker死活）；2，每隔30秒发送心跳给所有broker和uploadFilterClassSource
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -298,7 +298,7 @@ public class MQClientInstance {
                 }
             }
         }, 1000, this.clientConfig.getHeartbeatBrokerInterval(), TimeUnit.MILLISECONDS);
-
+        // 每隔10秒定时执行scheduledExecutorService
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -310,7 +310,7 @@ public class MQClientInstance {
                 }
             }
         }, 1000 * 10, this.clientConfig.getPersistConsumerOffsetInterval(), TimeUnit.MILLISECONDS);
-
+        // 每隔1秒定时调整线程池参数 TODO 【QUESTION10】这里调整的是什么线程池参数？如何调整？待深究
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override

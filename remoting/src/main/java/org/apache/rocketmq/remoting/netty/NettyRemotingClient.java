@@ -75,13 +75,13 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
 
     private final NettyClientConfig nettyClientConfig;
     private final Bootstrap bootstrap = new Bootstrap();
-    private final EventLoopGroup eventLoopGroupWorker;
+    private final EventLoopGroup eventLoopGroupWorker; // 客户端就用一个Netty的线程池即可
     private final Lock lockChannelTables = new ReentrantLock();
-    private final ConcurrentMap<String /* addr */, ChannelWrapper> channelTables = new ConcurrentHashMap<String, ChannelWrapper>();
-
+    private final ConcurrentMap<String /* addr */, ChannelWrapper> channelTables = new ConcurrentHashMap<String, ChannelWrapper>(); // 维护了Ip地址与ChannelWrapper的映射关系，其中ChannelWrapper封装了Netty的ChannelFuture
+    //  【QUESTION5】broker端的ClientHousekeepingService是一个线程，这里为何用timer？ 【ANSWER5】这个timer其实只是定时清理过期请求future而已
     private final Timer timer = new Timer("ClientHouseKeepingService", true);
 
-    private final AtomicReference<List<String>> namesrvAddrList = new AtomicReference<List<String>>();
+    private final AtomicReference<List<String>> namesrvAddrList = new AtomicReference<List<String>>(); //
     private final AtomicReference<String> namesrvAddrChoosed = new AtomicReference<String>();
     private final AtomicInteger namesrvIndex = new AtomicInteger(initValueIndex());
     private final Lock lockNamesrvChannel = new ReentrantLock();
@@ -103,13 +103,13 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
         final ChannelEventListener channelEventListener) {
         super(nettyClientConfig.getClientOnewaySemaphoreValue(), nettyClientConfig.getClientAsyncSemaphoreValue());
         this.nettyClientConfig = nettyClientConfig;
-        this.channelEventListener = channelEventListener;
+        this.channelEventListener = channelEventListener; // channelEventListener默认为Null，需要用户自定义
 
-        int publicThreadNums = nettyClientConfig.getClientCallbackExecutorThreads();
+        int publicThreadNums = nettyClientConfig.getClientCallbackExecutorThreads(); // 默认为cpu核数
         if (publicThreadNums <= 0) {
             publicThreadNums = 4;
         }
-
+        // 【QUESTION7】publicExecutor的作用是啥？  【ANSWER7】若处理ClientRemotingProcessor的executor参数传null，那么默认会用publicExecutor来执行ClientRemotingProcessor
         this.publicExecutor = Executors.newFixedThreadPool(publicThreadNums, new ThreadFactory() {
             private AtomicInteger threadIndex = new AtomicInteger(0);
 
@@ -118,7 +118,7 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
                 return new Thread(r, "NettyClientPublicExecutor_" + this.threadIndex.incrementAndGet());
             }
         });
-
+        // 客户端不用主从线程池，线程数量为1足够
         this.eventLoopGroupWorker = new NioEventLoopGroup(1, new ThreadFactory() {
             private AtomicInteger threadIndex = new AtomicInteger(0);
 
@@ -148,8 +148,8 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
     }
 
     @Override
-    public void start() {
-        this.defaultEventExecutorGroup = new DefaultEventExecutorGroup(
+    public void start() {// 这里直接用netty的线程池
+        this.defaultEventExecutorGroup = new DefaultEventExecutorGroup(// netty client的业务线程池，用于执行编解码，心跳以及业务Handler方法，跟平常我们使用的方式有点不一样，平常我们都是在netty的channelRead方法里才将处理逻辑丢给业务线程池，而编解码逻辑还是在IO线程池里处理
             nettyClientConfig.getClientWorkerThreads(),
             new ThreadFactory() {
 
@@ -164,7 +164,7 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
         Bootstrap handler = this.bootstrap.group(this.eventLoopGroupWorker).channel(NioSocketChannel.class)
             .option(ChannelOption.TCP_NODELAY, true)
             .option(ChannelOption.SO_KEEPALIVE, false)
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, nettyClientConfig.getConnectTimeoutMillis())
+            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, nettyClientConfig.getConnectTimeoutMillis()) // TODO 【QUESTION9】这个参数作用是啥？
             .option(ChannelOption.SO_SNDBUF, nettyClientConfig.getClientSocketSndBufSize())
             .option(ChannelOption.SO_RCVBUF, nettyClientConfig.getClientSocketRcvBufSize())
             .handler(new ChannelInitializer<SocketChannel>() {
@@ -183,12 +183,12 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
                         defaultEventExecutorGroup,
                         new NettyEncoder(),
                         new NettyDecoder(),
-                        new IdleStateHandler(0, 0, nettyClientConfig.getClientChannelMaxIdleTimeSeconds()),
-                        new NettyConnectManageHandler(),
+                        new IdleStateHandler(0, 0, nettyClientConfig.getClientChannelMaxIdleTimeSeconds()), // 使用netty原生的心跳处理handler
+                        new NettyConnectManageHandler(), // TODO 【QUESTION10】NettyClientHandler仅仅比NettyConnectManageHandler多一个channelRead0方法，其他都相同，为何还要多设置一个NettyConnectManageHandler？
                         new NettyClientHandler());
                 }
             });
-
+        // 定期清理过期的请求future
         this.timer.scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {
@@ -199,9 +199,9 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
                 }
             }
         }, 1000 * 3, 1000);
-
+        // 默认为Null
         if (this.channelEventListener != null) {
-            this.nettyEventExecutor.start();
+            this.nettyEventExecutor.start();// 开启nettyEventExecutor线程：执行用户自定义的ChannelEventListener
         }
     }
 
@@ -331,12 +331,12 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
             log.error("closeChannel exception", e);
         }
     }
-
+    // 比对现有的namesrvAddrList跟传进来的namesrvAddrList，若不一致则重新设置namesrvAddrList值为传进来的addrs
     @Override
     public void updateNameServerAddressList(List<String> addrs) {
         List<String> old = this.namesrvAddrList.get();
         boolean update = false;
-
+        // 比对现有的namesrvAddrList跟传进来的namesrvAddrList是否不一致，不一致则需要更新
         if (!addrs.isEmpty()) {
             if (null == old) {
                 update = true;
@@ -353,8 +353,8 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
             if (update) {
                 Collections.shuffle(addrs);
                 log.info("name server address updated. NEW : {} , OLD: {}", addrs, old);
-                this.namesrvAddrList.set(addrs);
-
+                this.namesrvAddrList.set(addrs);// 重新设置namesrvAddrList
+                // 若新的namesrvAddrList不包含namesrvAddrChoosed，则将namesrvAddrChoosed值置空
                 if (!addrs.contains(this.namesrvAddrChoosed.get())) {
                     this.namesrvAddrChoosed.set(null);
                 }
@@ -558,7 +558,7 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
     @Override
     public void registerProcessor(int requestCode, NettyRequestProcessor processor, ExecutorService executor) {
         ExecutorService executorThis = executor;
-        if (null == executor) {
+        if (null == executor) {// 若executor参数传null，那么默认会用publicExecutor来执行ClientRemotingProcessor
             executorThis = this.publicExecutor;
         }
 

@@ -120,8 +120,8 @@ public class DefaultMQProducerImpl implements MQProducerInner {
 
     public DefaultMQProducerImpl(final DefaultMQProducer defaultMQProducer, RPCHook rpcHook) {
         this.defaultMQProducer = defaultMQProducer;
-        this.rpcHook = rpcHook;
-
+        this.rpcHook = rpcHook;// 默认为Null
+        // 默认新建一个生产者执行异步发送消息异步线程池
         this.asyncSenderThreadPoolQueue = new LinkedBlockingQueue<Runnable>(50000);
         this.defaultAsyncSenderExecutor = new ThreadPoolExecutor(
             Runtime.getRuntime().availableProcessors(),
@@ -186,8 +186,8 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                     this.defaultMQProducer.changeInstanceNameToPID();
                 }
                 // mQClientFactory为MQClientInstance实例，注意MQClientManager属性为static，即被公用
-                this.mQClientFactory = MQClientManager.getInstance().getOrCreateMQClientInstance(this.defaultMQProducer, rpcHook);
-                // 注册producer（即DefaultMQProducerImpl实例）到producerTable集合
+                this.mQClientFactory = MQClientManager.getInstance().getOrCreateMQClientInstance(this.defaultMQProducer, rpcHook);// 【重要】这一步很重要，初始化了很多重要资源
+                // 注册producer（即DefaultMQProducerImpl实例）到MQClientInstance实例的producerTable集合
                 boolean registerOK = mQClientFactory.registerProducer(this.defaultMQProducer.getProducerGroup(), this);
                 if (!registerOK) {
                     this.serviceState = ServiceState.CREATE_JUST;
@@ -216,9 +216,9 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             default:
                 break;
         }
-
+        // 初始化后先发送一次心跳给all brokers
         this.mQClientFactory.sendHeartbeatToAllBrokerWithLock();
-
+        // 每隔3秒定期清理RequestFutureTable的requestFutureTable集合过期的RequestResponseFuture
         this.timer.scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {

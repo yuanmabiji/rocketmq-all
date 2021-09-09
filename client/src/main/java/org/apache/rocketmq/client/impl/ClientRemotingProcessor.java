@@ -60,10 +60,6 @@ public class ClientRemotingProcessor extends AsyncNettyRequestProcessor implemen
     private final InternalLogger log = ClientLogger.getLog();
     private final MQClientInstance mqClientFactory;
 
-    public ClientRemotingProcessor(final MQClientInstance mqClientFactory) {
-        this.mqClientFactory = mqClientFactory;
-    }
-
     @Override
     public RemotingCommand processRequest(ChannelHandlerContext ctx,
         RemotingCommand request) throws RemotingCommandException {
@@ -89,6 +85,10 @@ public class ClientRemotingProcessor extends AsyncNettyRequestProcessor implemen
                 break;
         }
         return null;
+    }
+
+    public ClientRemotingProcessor(final MQClientInstance mqClientFactory) {
+        this.mqClientFactory = mqClientFactory;
     }
 
     @Override

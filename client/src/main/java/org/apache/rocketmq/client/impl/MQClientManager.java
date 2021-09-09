@@ -49,7 +49,7 @@ public class MQClientManager {
         // clientId格式：clientIP@instanceName@[unitName]
         String clientId = clientConfig.buildMQClientId();
         MQClientInstance instance = this.factoryTable.get(clientId);
-        if (null == instance) {
+        if (null == instance) {// 【重要】这一步特别重要，MQClientInstance的新建意味着nettyclient的初始化，ClientRemotingProcessorMQClientAPIImpl   MQAdminImpl  PullMessageService   RebalanceService  ConsumerStatsManager的新建等
             instance = new MQClientInstance(clientConfig.cloneClientConfig(), this.factoryIndexGenerator.getAndIncrement(), clientId, rpcHook);
             MQClientInstance prev = this.factoryTable.putIfAbsent(clientId, instance);
             if (prev != null) {

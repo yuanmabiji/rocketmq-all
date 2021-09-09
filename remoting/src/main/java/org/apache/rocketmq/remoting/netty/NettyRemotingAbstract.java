@@ -73,24 +73,24 @@ public abstract class NettyRemotingAbstract {
      * This map caches all on-going requests.
      */
     protected final ConcurrentMap<Integer /* opaque */, ResponseFuture> responseTable =
-        new ConcurrentHashMap<Integer, ResponseFuture>(256);
+        new ConcurrentHashMap<Integer, ResponseFuture>(256); // responseTable:缓存发出去的请求Future,维护了opaque与ResponseFuture的映射关系
 
     /**
      * This container holds all processors per request code, aka, for each incoming request, we may look up the
      * responding processor in this map to handle the request.
      */
     protected final HashMap<Integer/* request code */, Pair<NettyRequestProcessor, ExecutorService>> processorTable =
-        new HashMap<Integer, Pair<NettyRequestProcessor, ExecutorService>>(64);
+        new HashMap<Integer, Pair<NettyRequestProcessor, ExecutorService>>(64);// processorTable：维护了request code与NettyRequestProcessor的映射关系，其中用绑定的线程池执行NettyRequestProcessor的方法
 
     /**
      * Executor to feed netty events to user defined {@link ChannelEventListener}.
      */
-    protected final NettyEventExecutor nettyEventExecutor = new NettyEventExecutor();
+    protected final NettyEventExecutor nettyEventExecutor = new NettyEventExecutor();// nettyEventExecutor线程：执行用户自定义的ChannelEventListener
 
     /**
      * The default request processor to use in case there is no exact match in {@link #processorTable} per request code.
      */
-    protected Pair<NettyRequestProcessor, ExecutorService> defaultRequestProcessor;
+    protected Pair<NettyRequestProcessor, ExecutorService> defaultRequestProcessor;// defaultRequestProcessor：当processorTable集合没有匹配的NettyRequestProcessor用该defaultRequestProcessor
 
     /**
      * SSL context via which to create {@link SslHandler}.
@@ -114,7 +114,7 @@ public abstract class NettyRemotingAbstract {
      * @param permitsAsync Number of permits for asynchronous requests.
      */
     public NettyRemotingAbstract(final int permitsOneway, final int permitsAsync) {
-        this.semaphoreOneway = new Semaphore(permitsOneway, true);
+        this.semaphoreOneway = new Semaphore(permitsOneway, true);// 初始化oneway和async的信号量，用于客户端限流
         this.semaphoreAsync = new Semaphore(permitsAsync, true);
     }
 

@@ -178,16 +178,16 @@ public class DefaultMQProducerImpl implements MQProducerInner {
     public void start(final boolean startFactory) throws MQClientException {
         switch (this.serviceState) {
             case CREATE_JUST:
-                this.serviceState = ServiceState.START_FAILED;
-
+                this.serviceState = ServiceState.START_FAILED; // 初始时先赋予START_FAILED，防止启动多次
+                // 检查ProducerGroup命名规范等
                 this.checkConfig();
-
+                // 如果instanceName未设置，那么则设置为进程ID，这为避免相同机器启动两个jvm的话，造成clientID重复
                 if (!this.defaultMQProducer.getProducerGroup().equals(MixAll.CLIENT_INNER_PRODUCER_GROUP)) {
                     this.defaultMQProducer.changeInstanceNameToPID();
                 }
-
+                // mQClientFactory为MQClientInstance实例，注意MQClientManager属性为static，即被公用
                 this.mQClientFactory = MQClientManager.getInstance().getOrCreateMQClientInstance(this.defaultMQProducer, rpcHook);
-
+                // 注册producer（即DefaultMQProducerImpl实例）到producerTable集合
                 boolean registerOK = mQClientFactory.registerProducer(this.defaultMQProducer.getProducerGroup(), this);
                 if (!registerOK) {
                     this.serviceState = ServiceState.CREATE_JUST;
@@ -195,9 +195,9 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                         + "] has been created before, specify another name please." + FAQUrl.suggestTodo(FAQUrl.GROUP_NAME_DUPLICATE_URL),
                         null);
                 }
-
+                // defaultMQProducer为DefaultMQProducer实例，his.defaultMQProducer.getCreateTopicKey()的值为TopicValidator.AUTO_CREATE_TOPIC_KEY_TOPIC
                 this.topicPublishInfoTable.put(this.defaultMQProducer.getCreateTopicKey(), new TopicPublishInfo());
-
+                // startFactory默认为true
                 if (startFactory) {
                     mQClientFactory.start();
                 }

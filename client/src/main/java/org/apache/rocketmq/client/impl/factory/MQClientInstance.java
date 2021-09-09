@@ -84,6 +84,13 @@ import org.apache.rocketmq.remoting.exception.RemotingException;
 import org.apache.rocketmq.remoting.netty.NettyClientConfig;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+/**
+ * MQClientInstance：
+ * 1，默认情况下，在同一个jvm中启动后，假如同时存在producer和consumer，此时获取的MQClientInstance为同一个哈，
+ * 因为两者的clientID相同，在MQlientManager的factoryTable集合中clientID重复，故为同一个；
+ * 2，MQClientInstance实例是producer和consumer与name server和broker打交道的实例
+ *
+ */
 public class MQClientInstance {
     private final static long LOCK_TIMEOUT_MILLIS = 3000;
     private final InternalLogger log = ClientLogger.getLog();

@@ -61,12 +61,13 @@ public class ClientConfig {
     private boolean useTLS = TlsSystemConfig.tlsEnable;
 
     private LanguageCode language = LanguageCode.JAVA;
-
+    // clientIP@instanceName@[unitName]
     public String buildMQClientId() {
         StringBuilder sb = new StringBuilder();
         sb.append(this.getClientIP());
 
         sb.append("@");
+        // private String instanceName = System.getProperty("rocketmq.client.name", "DEFAULT");即默认DEFAULT
         sb.append(this.getInstanceName());
         if (!UtilAll.isBlank(this.unitName)) {
             sb.append("@");

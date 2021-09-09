@@ -334,7 +334,7 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
         response.setRemark(null);
         return response;
     }
-
+    // 根据topic查找路由信息
     public RemotingCommand getRouteInfoByTopic(ChannelHandlerContext ctx,
         RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);

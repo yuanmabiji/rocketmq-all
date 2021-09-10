@@ -28,7 +28,7 @@ public class TopicPublishInfo {
     private boolean haveTopicRouterInfo = false;
     private List<MessageQueue> messageQueueList = new ArrayList<MessageQueue>();
     private volatile ThreadLocalIndex sendWhichQueue = new ThreadLocalIndex();
-    private TopicRouteData topicRouteData; // topic路由信息，改数据从name server根据topic查找路由信息返回
+    private TopicRouteData topicRouteData; // topic路由信息，该数据从name server根据topic查找路由信息返回
 
     public boolean isOrderTopic() {
         return orderTopic;

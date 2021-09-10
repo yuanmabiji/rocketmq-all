@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 package org.apache.rocketmq.common.constant;
-
+// TODO 【QUESTION12】 有空查看下rocket mq是如何使用loback分类存储日志的？
 public class LoggerName {
     public static final String FILTERSRV_LOGGER_NAME = "RocketmqFiltersrv";
     public static final String NAMESRV_LOGGER_NAME = "RocketmqNamesrv";

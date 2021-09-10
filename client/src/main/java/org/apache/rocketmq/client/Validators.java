@@ -84,9 +84,9 @@ public class Validators {
             throw new MQClientException(ResponseCode.MESSAGE_ILLEGAL, "the message is null");
         }
         // topic
-        Validators.checkTopic(msg.getTopic());
-        Validators.isNotAllowedSendTopic(msg.getTopic());
-
+        Validators.checkTopic(msg.getTopic());// 对topic是否空，pattern和字符长度进行校验
+        Validators.isNotAllowedSendTopic(msg.getTopic()); // 生产者不能发送消息到系统内置的一些topic，比如AUTO_CREATE_TOPIC_KEY_TOPIC等
+        // 不允许发送空消息
         // body
         if (null == msg.getBody()) {
             throw new MQClientException(ResponseCode.MESSAGE_ILLEGAL, "the message body is null");
@@ -95,7 +95,7 @@ public class Validators {
         if (0 == msg.getBody().length) {
             throw new MQClientException(ResponseCode.MESSAGE_ILLEGAL, "the message body length is zero");
         }
-
+        // 最大允许发送消息大小字节为4M
         if (msg.getBody().length > defaultMQProducer.getMaxMessageSize()) {
             throw new MQClientException(ResponseCode.MESSAGE_ILLEGAL,
                 "the message body size over max value, MAX: " + defaultMQProducer.getMaxMessageSize());

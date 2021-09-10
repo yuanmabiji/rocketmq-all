@@ -366,16 +366,16 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
     public RemotingCommand invokeSync(String addr, final RemotingCommand request, long timeoutMillis)
         throws InterruptedException, RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException {
         long beginStartTime = System.currentTimeMillis();
-        final Channel channel = this.getAndCreateChannel(addr);
-        if (channel != null && channel.isActive()) {
+        final Channel channel = this.getAndCreateChannel(addr);// 这里传的addr默认为null
+        if (channel != null && channel.isActive()) {// 再次判断返回的channel是否active,是则进行消息发送；否则关闭channel
             try {
-                doBeforeRpcHooks(addr, request);
+                doBeforeRpcHooks(addr, request);// 【重要】发送消息前执行doBeforeRpcHooks
                 long costTime = System.currentTimeMillis() - beginStartTime;
-                if (timeoutMillis < costTime) {
+                if (timeoutMillis < costTime) {// 发送消息超时即包括了连接超时，若连接超时时间超过了默认的3秒，也抛出发送消息超时异常RemotingTimeoutException
                     throw new RemotingTimeoutException("invokeSync call timeout");
                 }
-                RemotingCommand response = this.invokeSyncImpl(channel, request, timeoutMillis - costTime);
-                doAfterRpcHooks(RemotingHelper.parseChannelRemoteAddr(channel), request, response);
+                RemotingCommand response = this.invokeSyncImpl(channel, request, timeoutMillis - costTime); // 发送消息，超时的时间需要减去获取连接的时间【小细节】
+                doAfterRpcHooks(RemotingHelper.parseChannelRemoteAddr(channel), request, response);// 发送消息后执行doAfterRpcHooks
                 return response;
             } catch (RemotingSendRequestException e) {
                 log.warn("invokeSync: send request exception, so close the channel[{}]", addr);
@@ -397,7 +397,7 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
 
     private Channel getAndCreateChannel(final String addr) throws RemotingConnectException, InterruptedException {
         if (null == addr) {
-            return getAndCreateNameserverChannel();
+            return getAndCreateNameserverChannel(); // 这里发起对name server的连接
         }
 
         ChannelWrapper cw = this.channelTables.get(addr);
@@ -416,7 +416,7 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
                 return cw.getChannel();
             }
         }
-
+        // namesrvAddrList在初始化的时候设置的值
         final List<String> addrList = this.namesrvAddrList.get();
         if (this.lockNamesrvChannel.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
             try {
@@ -429,15 +429,15 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
                 }
 
                 if (addrList != null && !addrList.isEmpty()) {
-                    for (int i = 0; i < addrList.size(); i++) {
-                        int index = this.namesrvIndex.incrementAndGet();
+                    for (int i = 0; i < addrList.size(); i++) {// 循环连接name server列表，直到连接到一个可用的name serer，若全部name server不可用，才抛出异常
+                        int index = this.namesrvIndex.incrementAndGet();// 从namesrvAddrList随机选择一个nams server地址，并设置namesrvAddrChoosed
                         index = Math.abs(index);
                         index = index % addrList.size();
                         String newAddr = addrList.get(index);
 
                         this.namesrvAddrChoosed.set(newAddr);
                         log.info("new name server is chosen. OLD: {} , NEW: {}. namesrvIndex = {}", addr, newAddr, namesrvIndex);
-                        Channel channelNew = this.createChannel(newAddr);
+                        Channel channelNew = this.createChannel(newAddr);// 【重要】第一次发消息的时候才创建channel连接，懒加载思想
                         if (channelNew != null) {
                             return channelNew;
                         }
@@ -459,14 +459,14 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
         if (cw != null && cw.isOK()) {
             return cw.getChannel();
         }
-
+        // 若channel没创建或创建的channel不ok，那么需要创建一个channel
         if (this.lockChannelTables.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
             try {
                 boolean createNewConnection;
                 cw = this.channelTables.get(addr);
                 if (cw != null) {
 
-                    if (cw.isOK()) {
+                    if (cw.isOK()) { // TODO 【QUESTION17】 1，channel not active的情况下，会出现!cw.getChannelFuture().isDone()的情况么？2，!cw.getChannelFuture().isDone()的情况，此时channel的active状态是啥？一般不也是true?
                         return cw.getChannel();
                     } else if (!cw.getChannelFuture().isDone()) {
                         createNewConnection = false;
@@ -482,7 +482,7 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
                     ChannelFuture channelFuture = this.bootstrap.connect(RemotingHelper.string2SocketAddress(addr));
                     log.info("createChannel: begin to connect remote host[{}] asynchronously", addr);
                     cw = new ChannelWrapper(channelFuture);
-                    this.channelTables.put(addr, cw);
+                    this.channelTables.put(addr, cw);// 加入缓存，即使连接超时也会加入，但是上层catch到超时异常后，会将超时的该channel移除
                 }
             } catch (Exception e) {
                 log.error("createChannel: create channel exception", e);
@@ -492,14 +492,14 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
         } else {
             log.warn("createChannel: try to lock channel table, but timeout, {}ms", LOCK_TIMEOUT_MILLIS);
         }
-
+        // 这里创建channel会进行一些超时等待的逻辑
         if (cw != null) {
             ChannelFuture channelFuture = cw.getChannelFuture();
             if (channelFuture.awaitUninterruptibly(this.nettyClientConfig.getConnectTimeoutMillis())) {
                 if (cw.isOK()) {
                     log.info("createChannel: connect remote host[{}] success, {}", addr, channelFuture.toString());
                     return cw.getChannel();
-                } else {
+                } else {// 即使连接有问题，也不会抛出异常，只是打印警告日志
                     log.warn("createChannel: connect remote host[" + addr + "] failed, " + channelFuture.toString(), channelFuture.cause());
                 }
             } else {

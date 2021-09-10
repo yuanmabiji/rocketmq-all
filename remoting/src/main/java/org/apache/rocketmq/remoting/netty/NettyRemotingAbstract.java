@@ -419,10 +419,10 @@ public abstract class NettyRemotingAbstract {
         final int opaque = request.getOpaque();
 
         try {
-            final ResponseFuture responseFuture = new ResponseFuture(channel, opaque, timeoutMillis, null, null);
+            final ResponseFuture responseFuture = new ResponseFuture(channel, opaque, timeoutMillis, null, null);// 新建一个ResponseFuture实例，并放进responseTable，对应的key是opaque
             this.responseTable.put(opaque, responseFuture);
             final SocketAddress addr = channel.remoteAddress();
-            channel.writeAndFlush(request).addListener(new ChannelFutureListener() {
+            channel.writeAndFlush(request).addListener(new ChannelFutureListener() {// 将request实例（RemotingCommand实例）发出去，且新增一个ChannelFutureListener，用于处理发完消息的逻辑
                 @Override
                 public void operationComplete(ChannelFuture f) throws Exception {
                     if (f.isSuccess()) {
@@ -431,14 +431,14 @@ public abstract class NettyRemotingAbstract {
                     } else {
                         responseFuture.setSendRequestOK(false);
                     }
-
+                    // 郁闷，这块逻辑为啥不写进else呢。。。
                     responseTable.remove(opaque);
                     responseFuture.setCause(f.cause());
                     responseFuture.putResponse(null);
                     log.warn("send a request command to channel <" + addr + "> failed.");
                 }
             });
-
+            // 因为是同步发送，因此需要waitResponse，直至等到超时，如果超时的话，返回的则是null
             RemotingCommand responseCommand = responseFuture.waitResponse(timeoutMillis);
             if (null == responseCommand) {
                 if (responseFuture.isSendRequestOK()) {

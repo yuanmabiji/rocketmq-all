@@ -59,7 +59,7 @@ public class Producer {
                  */
                 Message msg = new Message("TopicTestGroup" /* Topic */,
                     "TagA" /* Tag */,
-                    ("Hello RocketMQ666 " + i).getBytes(RemotingHelper.DEFAULT_CHARSET) /* Message body */
+                    ("Hello RocketMQ888 " + i).getBytes(RemotingHelper.DEFAULT_CHARSET) /* Message body */
                 );
 
                 /*

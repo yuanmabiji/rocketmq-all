@@ -68,7 +68,7 @@ public class RemotingCommand {
             }
         }
     }
-
+    // 【重要】request code,服务端都是通过request code来查找相应的request请求处理器的
     private int code;
     private LanguageCode language = LanguageCode.JAVA;
     private int version = 0;
@@ -76,11 +76,11 @@ public class RemotingCommand {
     private int flag = 0;
     private String remark;
     private HashMap<String, String> extFields;
-    private transient CommandCustomHeader customHeader;
+    private transient CommandCustomHeader customHeader;// 请求头
 
     private SerializeType serializeTypeCurrentRPC = serializeTypeConfigInThisServer;
 
-    private transient byte[] body;
+    private transient byte[] body; // 请求报文字节数组
 
     protected RemotingCommand() {
     }

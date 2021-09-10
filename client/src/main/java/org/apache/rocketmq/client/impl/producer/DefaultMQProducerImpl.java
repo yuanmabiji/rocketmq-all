@@ -195,7 +195,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                         + "] has been created before, specify another name please." + FAQUrl.suggestTodo(FAQUrl.GROUP_NAME_DUPLICATE_URL),
                         null);
                 }
-                // defaultMQProducer为DefaultMQProducer实例，his.defaultMQProducer.getCreateTopicKey()的值为TopicValidator.AUTO_CREATE_TOPIC_KEY_TOPIC
+                // defaultMQProducer为DefaultMQProducer实例，his.defaultMQProducer.getCreateTopicKey()的值为TopicValidator.AUTO_CREATE_TOPIC_KEY_TOPIC，并加入topicPublishInfoTable
                 this.topicPublishInfoTable.put(this.defaultMQProducer.getCreateTopicKey(), new TopicPublishInfo());
                 // startFactory默认为true
                 if (startFactory) {
@@ -548,12 +548,12 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         final SendCallback sendCallback,
         final long timeout
     ) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
-        this.makeSureStateOK();
-        Validators.checkMessage(msg, this.defaultMQProducer);
-        final long invokeID = random.nextLong();
+        this.makeSureStateOK(); // 发送消息前先要确保serviceState == ServiceState.RUNNING
+        Validators.checkMessage(msg, this.defaultMQProducer);  // 再对消息进行一次检查，记得前面检查过了，为何需要再检查一次？
+        final long invokeID = random.nextLong(); // 获取到invokeID，用于requestID?
         long beginTimestampFirst = System.currentTimeMillis();
         long beginTimestampPrev = beginTimestampFirst;
-        long endTimestamp = beginTimestampFirst;
+        long endTimestamp = beginTimestampFirst; // TODO 【QUESTION13】如果是自动创建topic或在控制台创建topic的话，topic对应的broker信息何时会注册到name server?
         TopicPublishInfo topicPublishInfo = this.tryToFindTopicPublishInfo(msg.getTopic());
         if (topicPublishInfo != null && topicPublishInfo.ok()) {
             boolean callTimeout = false;
@@ -688,7 +688,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
 
     private TopicPublishInfo tryToFindTopicPublishInfo(final String topic) {
         TopicPublishInfo topicPublishInfo = this.topicPublishInfoTable.get(topic);
-        if (null == topicPublishInfo || !topicPublishInfo.ok()) {
+        if (null == topicPublishInfo || !topicPublishInfo.ok()) {// 若topicPublishInfo为null 或topicPublishInfo的messageQueueList为空，则需要将该topic加入topicPublishInfoTable集合
             this.topicPublishInfoTable.putIfAbsent(topic, new TopicPublishInfo());
             this.mQClientFactory.updateTopicRouteInfoFromNameServer(topic);
             topicPublishInfo = this.topicPublishInfoTable.get(topic);
@@ -1286,7 +1286,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
      */
     public SendResult send(
         Message msg) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
-        return send(msg, this.defaultMQProducer.getSendMsgTimeout());
+        return send(msg, this.defaultMQProducer.getSendMsgTimeout()); // this.defaultMQProducer即开发人员自己创建的DefaultMQProducer实例；默认超时3秒
     }
 
     public void endTransaction(

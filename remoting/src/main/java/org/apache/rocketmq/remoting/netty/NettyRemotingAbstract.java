@@ -438,13 +438,13 @@ public abstract class NettyRemotingAbstract {
                     log.warn("send a request command to channel <" + addr + "> failed.");
                 }
             });
-            // 因为是同步发送，因此需要waitResponse，直至等到超时，如果超时的话，返回的则是null
+            // 因为是同步发送，因此需要waitResponse，直至等到超时，如果超时或异常的话，返回的则是null
             RemotingCommand responseCommand = responseFuture.waitResponse(timeoutMillis);
             if (null == responseCommand) {
-                if (responseFuture.isSendRequestOK()) {
+                if (responseFuture.isSendRequestOK()) {// 1，sendRequestOK字段默认为true； 2，很可能超时执行到这里，然后发送请求返回并设置了responseFuture.setSendRequestOK(true);，这个属于超时情况
                     throw new RemotingTimeoutException(RemotingHelper.parseSocketAddressAddr(addr), timeoutMillis,
                         responseFuture.getCause());
-                } else {
+                } else {// 否则就是发送异常
                     throw new RemotingSendRequestException(RemotingHelper.parseSocketAddressAddr(addr), responseFuture.getCause());
                 }
             }

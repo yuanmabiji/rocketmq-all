@@ -1363,7 +1363,7 @@ public class MQClientAPIImpl {
         RemotingCommand response = this.remotingClient.invokeSync(null, request, timeoutMillis);
         assert response != null;
         switch (response.getCode()) {
-            case ResponseCode.TOPIC_NOT_EXIST: {
+            case ResponseCode.TOPIC_NOT_EXIST: {// 如果从name server获取的topic路由数据不存在，此时可能是设置了producer发送消息时topic自动创建
                 if (allowTopicNotExist) {
                     log.warn("get Topic [{}] RouteInfoFromNameServer is not exist value", topic);
                 }
@@ -1379,7 +1379,7 @@ public class MQClientAPIImpl {
             default:
                 break;
         }
-
+        // 这里抛出MQClientException，上层catch住仅仅打印下警告
         throw new MQClientException(response.getCode(), response.getRemark());
     }
 

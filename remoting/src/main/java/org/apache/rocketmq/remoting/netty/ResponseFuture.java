@@ -35,7 +35,7 @@ public class ResponseFuture {
     private final SemaphoreReleaseOnlyOnce once;
 
     private final AtomicBoolean executeCallbackOnlyOnce = new AtomicBoolean(false);
-    private volatile RemotingCommand responseCommand;
+    private volatile RemotingCommand responseCommand;// 这个是响应的结果，一般会设置进reponseFuture
     private volatile boolean sendRequestOK = true;
     private volatile Throwable cause;
 
@@ -57,7 +57,7 @@ public class ResponseFuture {
     }
 
     public void release() {
-        if (this.once != null) {
+        if (this.once != null) {// 对于同步调用，once默认为Null
             this.once.release();
         }
     }

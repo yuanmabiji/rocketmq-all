@@ -52,7 +52,7 @@ public class RouteInfoManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
     private final static long BROKER_CHANNEL_EXPIRED_TIME = 1000 * 60 * 2;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private final HashMap<String/* topic */, List<QueueData>> topicQueueTable; // 主题队列路由信息，维护了Topic与QueueData列表的对应关系，而QueueData存储了brokerName和读写队列数量等信息
+    private final HashMap<String/* topic */, List<QueueData>> topicQueueTable; // 1，主题队列路由信息，维护了Topic与QueueData列表的对应关系，而QueueData存储了brokerName和读写队列数量等数据信息,2，topicQueueTable很重要，是producer或consumer根据topic获取路由信息的第一个入口，你可以看到，RouteInfoManager的其他集合都没有topic作为key。client根据topic获取路由信息的BrokerData时，此时需要从topicQueueTable取出QueueData，然后再根据QueueData的brokerName从brokerAddrTable集合中取出BrokerData
     private final HashMap<String/* brokerName */, BrokerData> brokerAddrTable; // Broker信息，维护了brokerName与BrokerData的对应关系，BrokerData存储了broker集群名，brokerName，brokerId和broker IP等信息
     private final HashMap<String/* clusterName */, Set<String/* brokerName */>> clusterAddrTable; // broker集群信息，维护了broker集群名和brokerName集合的对应关系
     private final HashMap<String/* brokerAddr */, BrokerLiveInfo> brokerLiveTable; // broker状态信息，维护了broker IP与BrokerLiveInfo的映射关系，BrokerLiveInfo存储了上一次broker心跳更新的时间戳，dataversion,netty的channel和haServerAddr等信息
@@ -101,7 +101,7 @@ public class RouteInfoManager {
 
         return topicList.encode();
     }
-
+    // 接收broker心跳，注册broker，clusterName，brokerAddr，brokerName，brokerId等都是broker向name server注册时从broekr身上带过来的
     public RegisterBrokerResult registerBroker(
         final String clusterName,
         final String brokerAddr,
@@ -113,9 +113,9 @@ public class RouteInfoManager {
         final Channel channel) {
         RegisterBrokerResult result = new RegisterBrokerResult();
         try {
-            try {
+            try {// 同时可能有多个broker向name server注册，需要锁
                 this.lock.writeLock().lockInterruptibly();
-
+                // 1，注册clusterAddrTable集合：该broker集群下有哪些broker，每个brokerName对应单个broker master或主从master
                 Set<String> brokerNames = this.clusterAddrTable.get(clusterName);
                 if (null == brokerNames) {
                     brokerNames = new HashSet<String>();
@@ -124,7 +124,7 @@ public class RouteInfoManager {
                 brokerNames.add(brokerName);
 
                 boolean registerFirst = false;
-
+                // 2，注册brokerAddrTable集合：该集合描述了brokerName对应的BrokerData数据（属于哪个集群，主从broker对应的Ip）
                 BrokerData brokerData = this.brokerAddrTable.get(brokerName);
                 if (null == brokerData) {
                     registerFirst = true;
@@ -135,30 +135,30 @@ public class RouteInfoManager {
                 //Switch slave to master: first remove <1, IP:PORT> in namesrv, then add <0, IP:PORT>
                 //The same IP:PORT must only have one record in brokerAddrTable
                 Iterator<Entry<Long, String>> it = brokerAddrsMap.entrySet().iterator();
-                while (it.hasNext()) {
+                while (it.hasNext()) {// 这块逻辑涉及slave broker转换为master broker有关，需先移除对一个ip
                     Entry<Long, String> item = it.next();
                     if (null != brokerAddr && brokerAddr.equals(item.getValue()) && brokerId != item.getKey()) {
                         it.remove();
                     }
                 }
-
+                // 将同一个broker name的broker的broker id 和broker ip加入到brokerData的集合
                 String oldAddr = brokerData.getBrokerAddrs().put(brokerId, brokerAddr);
                 registerFirst = registerFirst || (null == oldAddr);
-
+                // topicConfigWrapper的topicConfigTable包含了该broker下所有TopicConfig数据，比如RMQ_SYS_TRANS_HALF_TOPIC，%RETRY%xxx等topic配置信息
                 if (null != topicConfigWrapper
                     && MixAll.MASTER_ID == brokerId) {
-                    if (this.isBrokerTopicConfigChanged(brokerAddr, topicConfigWrapper.getDataVersion())
-                        || registerFirst) {
+                    if (this.isBrokerTopicConfigChanged(brokerAddr, topicConfigWrapper.getDataVersion()) // 从brokerLiveTable集合根据broker ip查出对应的topicConfigWrapper的版本，比对与现在传过来的版本有无变化
+                        || registerFirst) {// 3，注册topicQueueTable集合，若topicConfigWrapper版本变化或第一次注册，那么需要注册topicQueueTable集合
                         ConcurrentMap<String, TopicConfig> tcTable =
                             topicConfigWrapper.getTopicConfigTable();
                         if (tcTable != null) {
-                            for (Map.Entry<String, TopicConfig> entry : tcTable.entrySet()) {
+                            for (Map.Entry<String, TopicConfig> entry : tcTable.entrySet()) {// 遍历broker传过来的topicConfigWrapper.TopicConfigTable,依次创建或更新queueData元数据
                                 this.createAndUpdateQueueData(brokerName, entry.getValue());
                             }
                         }
                     }
                 }
-
+                // 4，注册brokerLiveTable集合：brokerLiveTable维护了存活的broker列表
                 BrokerLiveInfo prevBrokerLiveInfo = this.brokerLiveTable.put(brokerAddr,
                     new BrokerLiveInfo(
                         System.currentTimeMillis(),
@@ -168,7 +168,7 @@ public class RouteInfoManager {
                 if (null == prevBrokerLiveInfo) {
                     log.info("new broker registered, {} HAServer: {}", brokerAddr, haServerAddr);
                 }
-
+                // 4，注册filterServerTable集合
                 if (filterServerList != null) {
                     if (filterServerList.isEmpty()) {
                         this.filterServerTable.remove(brokerAddr);
@@ -176,13 +176,13 @@ public class RouteInfoManager {
                         this.filterServerTable.put(brokerAddr, filterServerList);
                     }
                 }
-
+                // 对于slave broker从节点来说，
                 if (MixAll.MASTER_ID != brokerId) {
-                    String masterAddr = brokerData.getBrokerAddrs().get(MixAll.MASTER_ID);
+                    String masterAddr = brokerData.getBrokerAddrs().get(MixAll.MASTER_ID);// 拿到master broker的ip
                     if (masterAddr != null) {
-                        BrokerLiveInfo brokerLiveInfo = this.brokerLiveTable.get(masterAddr);
+                        BrokerLiveInfo brokerLiveInfo = this.brokerLiveTable.get(masterAddr);// 拿到master broker的brokerLiveInfo
                         if (brokerLiveInfo != null) {
-                            result.setHaServerAddr(brokerLiveInfo.getHaServerAddr());
+                            result.setHaServerAddr(brokerLiveInfo.getHaServerAddr());// 返回结果result需要设置HaServerAddr和MasterAddr TODO 【QUESTION24】为啥从节点需要设置这个呢？待分析
                             result.setMasterAddr(masterAddr);
                         }
                     }
@@ -218,26 +218,26 @@ public class RouteInfoManager {
     }
 
     private void createAndUpdateQueueData(final String brokerName, final TopicConfig topicConfig) {
-        QueueData queueData = new QueueData();
+        QueueData queueData = new QueueData();// 新建QueueData实例，并设置该QueueData实例属于哪个broker和设置读写队列数量等
         queueData.setBrokerName(brokerName);
         queueData.setWriteQueueNums(topicConfig.getWriteQueueNums());
         queueData.setReadQueueNums(topicConfig.getReadQueueNums());
         queueData.setPerm(topicConfig.getPerm());
         queueData.setTopicSynFlag(topicConfig.getTopicSysFlag());
-
+        // 注册topicQueueTable，topic作为key，queueDataList作为值，即可根据topic从topicQueueTable获取queueDataList，然后queueDataList可能会包含不同broker的queueData
         List<QueueData> queueDataList = this.topicQueueTable.get(topicConfig.getTopicName());
-        if (null == queueDataList) {
+        if (null == queueDataList) {// 初次注册
             queueDataList = new LinkedList<QueueData>();
             queueDataList.add(queueData);
             this.topicQueueTable.put(topicConfig.getTopicName(), queueDataList);
             log.info("new topic registered, {} {}", topicConfig.getTopicName(), queueData);
-        } else {
+        } else {// 非第一次注册，如果
             boolean addNewOne = true;
 
             Iterator<QueueData> it = queueDataList.iterator();
             while (it.hasNext()) {
                 QueueData qd = it.next();
-                if (qd.getBrokerName().equals(brokerName)) {
+                if (qd.getBrokerName().equals(brokerName)) {// 找出相应brokerName的queueData，若相等则不用新增，若不等则需要替换
                     if (qd.equals(queueData)) {
                         addNewOne = false;
                     } else {
@@ -373,39 +373,39 @@ public class RouteInfoManager {
             }
         }
     }
-
+    // 总结：元数据依赖关系：filterServerTable依赖brokerAddrTable依赖topicQueueTable依赖topic
     public TopicRouteData pickupTopicRouteData(final String topic) {
         TopicRouteData topicRouteData = new TopicRouteData();
         boolean foundQueueData = false;
         boolean foundBrokerData = false;
         Set<String> brokerNameSet = new HashSet<String>();
         List<BrokerData> brokerDataList = new LinkedList<BrokerData>();
-        topicRouteData.setBrokerDatas(brokerDataList);
+        topicRouteData.setBrokerDatas(brokerDataList); // 将该topic下的brokerDataList设置进topicRouteData实例
 
         HashMap<String, List<String>> filterServerMap = new HashMap<String, List<String>>();
-        topicRouteData.setFilterServerTable(filterServerMap);
+        topicRouteData.setFilterServerTable(filterServerMap); // 将filterServerMap设置进topicRouteData实例
 
         try {
-            try {
-                this.lock.readLock().lockInterruptibly();
-                List<QueueData> queueDataList = this.topicQueueTable.get(topic);
+            try {// 这里要加锁，应该是有生产者或其他定时线程会拉取路由数据？
+                this.lock.readLock().lockInterruptibly();// 根据topic从topicQueueTable取出QueueData集合元数据，其中QueueData集合存储了该topic下有哪些broker(QueueData中有brokerName)，每个broker的读写队列数量是多少
+                List<QueueData> queueDataList = this.topicQueueTable.get(topic); // TODO 【QUESTION19】topicQueueTable何时初始化？看里面初始化了%RETRYxxx%，SCHEDULE_XXX和业务建的topi
                 if (queueDataList != null) {
-                    topicRouteData.setQueueDatas(queueDataList);
+                    topicRouteData.setQueueDatas(queueDataList);// 将该topic下的queueDataList设置进topicRouteData实例
                     foundQueueData = true;
-
+                    // 根据queueDataList的brokerName组成brokerNameSet，用于下面从brokerAddrTable获取对应的BrokerData
                     Iterator<QueueData> it = queueDataList.iterator();
                     while (it.hasNext()) {
                         QueueData qd = it.next();
                         brokerNameSet.add(qd.getBrokerName());
                     }
-
+                    // 分别遍历brokerNameSet，从brokerAddrTable获取对应的BrokerData
                     for (String brokerName : brokerNameSet) {
                         BrokerData brokerData = this.brokerAddrTable.get(brokerName);
                         if (null != brokerData) {
                             BrokerData brokerDataClone = new BrokerData(brokerData.getCluster(), brokerData.getBrokerName(), (HashMap<Long, String>) brokerData
                                 .getBrokerAddrs().clone());
                             brokerDataList.add(brokerDataClone);
-                            foundBrokerData = true;
+                            foundBrokerData = true;// 从对应的brokerData中遍历所有的broker ip（可能是主从broker节点），然后获取对应broker节点的filterServerList
                             for (final String brokerAddr : brokerDataClone.getBrokerAddrs().values()) {
                                 List<String> filterServerList = this.filterServerTable.get(brokerAddr);
                                 filterServerMap.put(brokerAddr, filterServerList);
@@ -756,10 +756,10 @@ public class RouteInfoManager {
 }
 
 class BrokerLiveInfo {
-    private long lastUpdateTimestamp;
-    private DataVersion dataVersion;
-    private Channel channel;
-    private String haServerAddr; // 对于master Broker，haServerAddr值为slave broker的ip:port；对于slave broker，haServerAddr值为空。
+    private long lastUpdateTimestamp; // 最后更新的时间戳
+    private DataVersion dataVersion; // 版本
+    private Channel channel; // 对应的channel
+    private String haServerAddr; // 对于master Broker，haServerAddr值为slave broker的ip:port；对于slave broker，haServerAddr值为空？
 
     public BrokerLiveInfo(long lastUpdateTimestamp, DataVersion dataVersion, Channel channel,
         String haServerAddr) {

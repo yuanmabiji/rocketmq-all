@@ -73,7 +73,7 @@ public abstract class NettyRemotingAbstract {
      * This map caches all on-going requests.
      */
     protected final ConcurrentMap<Integer /* opaque */, ResponseFuture> responseTable =
-        new ConcurrentHashMap<Integer, ResponseFuture>(256); // responseTable:缓存发出去的请求Future,维护了opaque与ResponseFuture的映射关系
+        new ConcurrentHashMap<Integer, ResponseFuture>(256); // responseTable:缓存发出去的请求Future,维护了opaque与ResponseFuture的映射关系,opaque即request ID,当有响应回来的时候要根据opaque取出对应的future
 
     /**
      * This container holds all processors per request code, aka, for each incoming request, we may look up the
@@ -297,17 +297,17 @@ public abstract class NettyRemotingAbstract {
         final int opaque = cmd.getOpaque();
         final ResponseFuture responseFuture = responseTable.get(opaque);
         if (responseFuture != null) {
-            responseFuture.setResponseCommand(cmd);
-
+            responseFuture.setResponseCommand(cmd);// 将RemotingCommand实例设置进responseFuture
+            // 响应已经回来，此时移除掉opaque对应的future
             responseTable.remove(opaque);
 
-            if (responseFuture.getInvokeCallback() != null) {
+            if (responseFuture.getInvokeCallback() != null) {// 这个应该是对于异步调用的回调
                 executeInvokeCallback(responseFuture);
             } else {
                 responseFuture.putResponse(cmd);
                 responseFuture.release();
             }
-        } else {
+        } else {// 能执行到这里，说明很可能是请求超时了，然后responseTable对应opaque的future被后台定时任务移除
             log.warn("receive response, but not matched any request, " + RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
             log.warn(cmd.toString());
         }
@@ -426,7 +426,7 @@ public abstract class NettyRemotingAbstract {
                 @Override
                 public void operationComplete(ChannelFuture f) throws Exception {
                     if (f.isSuccess()) {
-                        responseFuture.setSendRequestOK(true);
+                        responseFuture.setSendRequestOK(true);// 如果是成功的话，会在netty的channelRead方法里调用responseFuture.putResponse设置响应结果，让业务调用线程不再等待
                         return;
                     } else {
                         responseFuture.setSendRequestOK(false);
@@ -434,7 +434,7 @@ public abstract class NettyRemotingAbstract {
                     // 郁闷，这块逻辑为啥不写进else呢。。。
                     responseTable.remove(opaque);
                     responseFuture.setCause(f.cause());
-                    responseFuture.putResponse(null);
+                    responseFuture.putResponse(null);// 此时调用失败，也要countDownLatch.countDown()让业务调用线程不再等待
                     log.warn("send a request command to channel <" + addr + "> failed.");
                 }
             });

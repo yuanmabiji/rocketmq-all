@@ -162,12 +162,12 @@ public class MQClientInstance {
             this.clientId,
             this.clientConfig,
             MQVersion.getVersionDesc(MQVersion.CURRENT_VERSION), RemotingCommand.getSerializeTypeConfigInThisServer());
-    }
-
+    }// 注意：一个topic可以有多个MessageQueue，每个MessageQueue对应一个broker，这里不同的MessageQueue可以对应不同的broker。同时一个broker上可以有多个MessageQueue（根据topic的写队列数量决定）
+    // 将topicRouteData转换为TopicPublishInfo：1，首先TopicRouteData信息是producer根据topic从name server获取的路由信息，包含了queueData集合和brokerData集合；2，双重循环：先遍历queueData集合，再遍历brokerData集合，根据queueData的broker name找出对应的brokerData，目的是为了拿到broker name；3，最后遍历queueData的写队列数量依次建立MessageQueue(topic,brokerName,i)，最后都添加到TopicPublishInfo的messageQueueList集合中即可
     public static TopicPublishInfo topicRouteData2TopicPublishInfo(final String topic, final TopicRouteData route) {
         TopicPublishInfo info = new TopicPublishInfo();
         info.setTopicRouteData(route);
-        if (route.getOrderTopicConf() != null && route.getOrderTopicConf().length() > 0) {
+        if (route.getOrderTopicConf() != null && route.getOrderTopicConf().length() > 0) { // TODO 跟顺序消息有关，待分析
             String[] brokers = route.getOrderTopicConf().split(";");
             for (String broker : brokers) {
                 String[] item = broker.split(":");
@@ -182,11 +182,11 @@ public class MQClientInstance {
         } else {
             List<QueueData> qds = route.getQueueDatas();
             Collections.sort(qds);
-            for (QueueData qd : qds) {
+            for (QueueData qd : qds) {// 第一层遍历：遍历QueueData集合
                 if (PermName.isWriteable(qd.getPerm())) {
                     BrokerData brokerData = null;
-                    for (BrokerData bd : route.getBrokerDatas()) {
-                        if (bd.getBrokerName().equals(qd.getBrokerName())) {
+                    for (BrokerData bd : route.getBrokerDatas()) {// 第二层遍历：遍历BrokerData集合
+                        if (bd.getBrokerName().equals(qd.getBrokerName())) {// 找到QueueData与BrokerData的brokerName相等，则把brokerData实例揪出来，用于后面检查是否continue跳过
                             brokerData = bd;
                             break;
                         }
@@ -195,16 +195,16 @@ public class MQClientInstance {
                     if (null == brokerData) {
                         continue;
                     }
-
+                    // 如果该broker不是master，那么继续遍历下一个，找出master broker，因为发消息只能发master broker
                     if (!brokerData.getBrokerAddrs().containsKey(MixAll.MASTER_ID)) {
                         continue;
-                    }
-
+                    }// 能执行到这里说明brokerData不为Null且包含master broker
+                    // 遍历queuedata的可写消息队列数量，然后建立相应数量的MessageQueue并加入TopicPublishInfo的messageQueueList集合中
                     for (int i = 0; i < qd.getWriteQueueNums(); i++) {
-                        MessageQueue mq = new MessageQueue(topic, qd.getBrokerName(), i);
-                        info.getMessageQueueList().add(mq);
-                    }
-                }
+                        MessageQueue mq = new MessageQueue(topic, qd.getBrokerName(), i); // 【QUESTION23】QueueData，BrokerData与MessageQueue是什么关系？
+                        info.getMessageQueueList().add(mq);                               // 【ANSWER23】1，QueueData描述了队列元数据，即在某个broker上新建多少读写队列；
+                    }                                                                     //               BrokerData维护了同一个broker name下的broker ip关系等，其中QueueData与BrokerData的brokerName一一对应
+                }                                                                         //               MessageQueue维护了该MessageQueue属于哪个topic，哪个broker name等信息，这里只要知道broker name即可，因为producer发送消息只发送master broker
             }
 
             info.setOrderTopic(false);
@@ -219,7 +219,7 @@ public class MQClientInstance {
         for (QueueData qd : qds) {
             if (PermName.isReadable(qd.getPerm())) {
                 for (int i = 0; i < qd.getReadQueueNums(); i++) {
-                    MessageQueue mq = new MessageQueue(topic, qd.getBrokerName(), i);
+                    MessageQueue mq = new MessageQueue(topic, qd.getBrokerName(), i);// TODO 【QUESTION25】MessageQueue只维护了对应的broker name？如何得到broker 的ip呢？
                     mqList.add(mq);
                 }
             }
@@ -611,44 +611,44 @@ public class MQClientInstance {
 
     public boolean updateTopicRouteInfoFromNameServer(final String topic, boolean isDefault,
         DefaultMQProducer defaultMQProducer) {
-        try {// TODO 【QEUSTION15】这里为啥要用锁？为啥要用超时的锁？
+        try {// TODO 【QEUSTION15】这里为啥要用锁？为啥要用超时的锁？因为有后台定时任务线程执行该方法从name server获取topic路由信息？
             if (this.lockNamesrv.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
                 try {
                     TopicRouteData topicRouteData;
-                    if (isDefault && defaultMQProducer != null) {// TODO 这里待分析
-                        topicRouteData = this.mQClientAPIImpl.getDefaultTopicRouteInfoFromNameServer(defaultMQProducer.getCreateTopicKey(),
+                    if (isDefault && defaultMQProducer != null) {// 用默认主题去name server拉取路由信息即第一次从name server没有获取到路由消息，第二次会执行这里的逻辑；若name server的autoCreateTopicEnable设置为false，那么将抛出topic无法找到路由信息的异常
+                        topicRouteData = this.mQClientAPIImpl.getDefaultTopicRouteInfoFromNameServer(defaultMQProducer.getCreateTopicKey()/*默认主题TBW102*/,
                             1000 * 3);
-                        if (topicRouteData != null) {
+                        if (topicRouteData != null) {// 此时会从name server获取一个topic名为TBW102的topicRouteData实例，然后再设置ReadQueueNums和WriteQueueNums TODO [QUESTION20]对于自动创建topic的逻辑，为啥还要从name server获取一个模板topicRouteData呢，而不直接自动创建一个？
                             for (QueueData data : topicRouteData.getQueueDatas()) {
                                 int queueNums = Math.min(defaultMQProducer.getDefaultTopicQueueNums(), data.getReadQueueNums());
-                                data.setReadQueueNums(queueNums);
+                                data.setReadQueueNums(queueNums); // 替换默认主题的路由信息QueueData的镀锡消息队列数量
                                 data.setWriteQueueNums(queueNums);
                             }
                         }
-                    } else {// 开发人员发送消息的话，走该分支，从name server拉取路由信息
+                    } else {// 根据指定主题从name server拉取路由信息，即开发人员发送消息的话，走该分支，从name server拉取路由信息
                         topicRouteData = this.mQClientAPIImpl.getTopicRouteInfoFromNameServer(topic, 1000 * 3);
-                    }
+                    }// 从name srver获取到路由消息的情况
                     if (topicRouteData != null) {
                         TopicRouteData old = this.topicRouteTable.get(topic);
-                        boolean changed = topicRouteDataIsChange(old, topicRouteData);
-                        if (!changed) {
+                        boolean changed = topicRouteDataIsChange(old, topicRouteData);// 看name server返回的路由信息跟本地缓存的路由信息是否有变化
+                        if (!changed) {// 若未发生变化，那么再进一步看isNeedUpdateTopicRouteInfo
                             changed = this.isNeedUpdateTopicRouteInfo(topic);
                         } else {
                             log.info("the topic[{}] route info changed, old[{}] ,new[{}]", topic, old, topicRouteData);
                         }
-
+                        // 从name server返回的路由信息跟本地缓存的路由信息比对有变化
                         if (changed) {
                             TopicRouteData cloneTopicRouteData = topicRouteData.cloneTopicRouteData();
-
+                            // 遍历从name server返回的topicRouteData的brokerDatas集合，以broker name作为key，broker id和broker ip作为值存进brokerAddrTable集合
                             for (BrokerData bd : topicRouteData.getBrokerDatas()) {
                                 this.brokerAddrTable.put(bd.getBrokerName(), bd.getBrokerAddrs());
                             }
-
-                            // Update Pub info
+                            // 注意：MQClientInstance是producer和consumer共用的，若producer和consumer在同一个jvm，会共用同一个MQClientInstance实例
+                            // Update Pub info 对于producer而言：更新发布信息，主要是将topicRouteData的queueDataList和brokerDataList转换为MessageQueuList然后添加给TopicPublishInfo
                             {
                                 TopicPublishInfo publishInfo = topicRouteData2TopicPublishInfo(topic, topicRouteData);
                                 publishInfo.setHaveTopicRouterInfo(true);
-                                Iterator<Entry<String, MQProducerInner>> it = this.producerTable.entrySet().iterator();
+                                Iterator<Entry<String, MQProducerInner>> it = this.producerTable.entrySet().iterator();// 遍历producerTable列表，最终将TopicPublishInfo信息更新到DefaultMQProducerImpl（生产者实例）的topicPublishInfoTable集合中
                                 while (it.hasNext()) {
                                     Entry<String, MQProducerInner> entry = it.next();
                                     MQProducerInner impl = entry.getValue();
@@ -658,7 +658,7 @@ public class MQClientInstance {
                                 }
                             }
 
-                            // Update sub info
+                            // Update sub info 对于consumer而言，更新订阅信息
                             {
                                 Set<MessageQueue> subscribeInfo = topicRouteData2TopicSubscribeInfo(topic, topicRouteData);
                                 Iterator<Entry<String, MQConsumerInner>> it = this.consumerTable.entrySet().iterator();
@@ -671,7 +671,7 @@ public class MQClientInstance {
                                 }
                             }
                             log.info("topicRouteTable.put. Topic = {}, TopicRouteData[{}]", topic, cloneTopicRouteData);
-                            this.topicRouteTable.put(topic, cloneTopicRouteData);
+                            this.topicRouteTable.put(topic, cloneTopicRouteData);// 同时MQClientInstance实例维护了一个topicRouteTable
                             return true;
                         }
                     } else {
@@ -1027,7 +1027,7 @@ public class MQClientInstance {
     }
 
     public String findBrokerAddressInPublish(final String brokerName) {
-        HashMap<Long/* brokerId */, String/* address */> map = this.brokerAddrTable.get(brokerName);
+        HashMap<Long/* brokerId */, String/* address */> map = this.brokerAddrTable.get(brokerName);// client定时任务会定期执行tryToFindTopicPublishInfo方法维护brokerAddrTable集合（或第一个发送消息也会）
         if (map != null && !map.isEmpty()) {
             return map.get(MixAll.MASTER_ID);
         }

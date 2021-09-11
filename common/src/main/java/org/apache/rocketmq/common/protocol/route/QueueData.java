@@ -21,10 +21,10 @@
 package org.apache.rocketmq.common.protocol.route;
 
 public class QueueData implements Comparable<QueueData> {
-    private String brokerName;
-    private int readQueueNums; // TODO 【QUESTION1】一个Topic下有多个队列，这多个队列可否分布在不同的broker上呢？为何有读队列和写队列？
-    private int writeQueueNums;
-    private int perm;
+    private String brokerName; // 对应brokerName，即该queueData的元数据信息描述的就是该brokerName对应broker的元数据
+    private int readQueueNums; // 读队列数量,对于消费者而言 【QUESTION1】一个Topic下有多个队列，这多个队列可否分布在不同的broker上呢？答：可以，但是跟writeQueueNums无关系，这里的writeQueueNums表示的是在同一个broker上建立多少个MessageQueue；为何有读队列和写队列？答：对于生产者或消费者而言的 【ANSWER1】
+    private int writeQueueNums;// 写队列数量，对于生产者而言
+    private int perm;// 读写权限
     private int topicSynFlag;
 
     public int getReadQueueNums() {

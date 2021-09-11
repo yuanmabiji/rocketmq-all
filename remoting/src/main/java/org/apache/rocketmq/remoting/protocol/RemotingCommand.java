@@ -234,14 +234,14 @@ public class RemotingCommand {
     public CommandCustomHeader decodeCommandCustomHeader(
         Class<? extends CommandCustomHeader> classHeader) throws RemotingCommandException {
         CommandCustomHeader objectHeader;
-        try {
+        try {// 反射新建一个classHeader实例
             objectHeader = classHeader.newInstance();
         } catch (InstantiationException e) {
             return null;
         } catch (IllegalAccessException e) {
             return null;
         }
-
+        // extFields存储了客户端传过来的一些key-value键值对比如topic=xxx，若extFields的key跟classHeader实例的某个成员变量一致，那么则将extFields对应键的值赋给classHeader实例的相应成员变量
         if (this.extFields != null) {
 
             Field[] fields = getClazzFields(classHeader);

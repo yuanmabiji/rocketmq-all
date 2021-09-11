@@ -553,7 +553,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         final long invokeID = random.nextLong(); // 获取到invokeID，用于requestID?
         long beginTimestampFirst = System.currentTimeMillis();
         long beginTimestampPrev = beginTimestampFirst;
-        long endTimestamp = beginTimestampFirst; // TODO 【QUESTION13】如果是自动创建topic或在控制台创建topic的话，topic对应的broker信息何时会注册到name server?
+        long endTimestamp = beginTimestampFirst; // 【QUESTION13】如果是自动创建topic或在控制台创建topic的话，topic对应的broker信息何时会注册到name server? 答：不管是是自动创建topic或在控制台创建topic，broker都会定时向name server注册broker信息，此时就包括相应topic的信息
         TopicPublishInfo topicPublishInfo = this.tryToFindTopicPublishInfo(msg.getTopic());
         if (topicPublishInfo != null && topicPublishInfo.ok()) {
             boolean callTimeout = false;
@@ -565,7 +565,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             String[] brokersSent = new String[timesTotal];
             for (; times < timesTotal; times++) {
                 String lastBrokerName = null == mq ? null : mq.getBrokerName();
-                MessageQueue mqSelected = this.selectOneMessageQueue(topicPublishInfo, lastBrokerName);
+                MessageQueue mqSelected = this.selectOneMessageQueue(topicPublishInfo, lastBrokerName);// MessageQueue有多个，那么需要选择一个MessageQueue出来，其中多个MessageQueue可能率属于不同的broker； TODO 里面的容错逻辑待分析
                 if (mqSelected != null) {
                     mq = mqSelected;
                     brokersSent[times] = mq.getBrokerName();
@@ -689,12 +689,12 @@ public class DefaultMQProducerImpl implements MQProducerInner {
     private TopicPublishInfo tryToFindTopicPublishInfo(final String topic) {
         TopicPublishInfo topicPublishInfo = this.topicPublishInfoTable.get(topic);
         if (null == topicPublishInfo || !topicPublishInfo.ok()) {// 若topicPublishInfo为null 或topicPublishInfo的messageQueueList为空，则需要将该topic加入topicPublishInfoTable集合
-            this.topicPublishInfoTable.putIfAbsent(topic, new TopicPublishInfo());
-            this.mQClientFactory.updateTopicRouteInfoFromNameServer(topic);
+            this.topicPublishInfoTable.putIfAbsent(topic, new TopicPublishInfo());// 这里先新建一个TopicPublishInfo放进topicPublishInfoTable集合
+            this.mQClientFactory.updateTopicRouteInfoFromNameServer(topic);// 【重要】从name server拉取topic路由消息，如果成功拉取到，那么会更新topicPublishInfoTable集合中topic对应的TopicPublishInfo实例
             topicPublishInfo = this.topicPublishInfoTable.get(topic);
         }
 
-        if (topicPublishInfo.isHaveTopicRouterInfo() || topicPublishInfo.ok()) {
+        if (topicPublishInfo.isHaveTopicRouterInfo() || topicPublishInfo.ok()) {// 如果从name server获取到了topicPublishInfo则返回；否则继续调用updateTopicRouteInfoFromNameServer
             return topicPublishInfo;
         } else {
             this.mQClientFactory.updateTopicRouteInfoFromNameServer(topic, true, this.defaultMQProducer);
@@ -712,7 +712,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         long beginStartTime = System.currentTimeMillis();
         String brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(mq.getBrokerName());
         if (null == brokerAddr) {
-            tryToFindTopicPublishInfo(mq.getTopic());
+            tryToFindTopicPublishInfo(mq.getTopic());// 为空的话，则再执行下tryToFindTopicPublishInfo(mq.getTopic())方法即根据topic从name server拉取路由信息
             brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(mq.getBrokerName());
         }
 

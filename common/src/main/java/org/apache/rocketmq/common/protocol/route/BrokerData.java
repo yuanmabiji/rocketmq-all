@@ -22,11 +22,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Random;
 import org.apache.rocketmq.common.MixAll;
-
+// broker为维度的broker元数据信息，仅包括了主从broker的信息
 public class BrokerData implements Comparable<BrokerData> {
-    private String cluster;
-    private String brokerName;
-    private HashMap<Long/* brokerId */, String/* broker address */> brokerAddrs;
+    private String cluster; // broker所在集群名
+    private String brokerName; // broker名称
+    private HashMap<Long/* brokerId */, String/* broker address */> brokerAddrs; // 同一个broker name下的broker id和broker ip映射关系，即主从节点都会添加在此集合中
 
     private final Random random = new Random();
 

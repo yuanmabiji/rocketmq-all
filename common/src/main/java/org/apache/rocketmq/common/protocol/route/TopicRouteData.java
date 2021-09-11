@@ -24,12 +24,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
-
+// topic为维度的元数据
 public class TopicRouteData extends RemotingSerializable {
-    private String orderTopicConf;
-    private List<QueueData> queueDatas;
-    private List<BrokerData> brokerDatas;
-    private HashMap<String/* brokerAddr */, List<String>/* Filter Server */> filterServerTable;
+    private String orderTopicConf; // TODO 【QUESTION22】这个属性作用是啥，不过跟顺序消息有关，待分析
+    private List<QueueData> queueDatas; // QueueData集合
+    private List<BrokerData> brokerDatas;// BrokerData集合
+    private HashMap<String/* brokerAddr */, List<String>/* Filter Server */> filterServerTable; // broker上的filterServer集合
 
     public TopicRouteData cloneTopicRouteData() {
         TopicRouteData topicRouteData = new TopicRouteData();

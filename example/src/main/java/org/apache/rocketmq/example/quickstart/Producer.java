@@ -57,7 +57,7 @@ public class Producer {
                 /*
                  * Create a message instance, specifying topic, tag and message body.
                  */
-                Message msg = new Message("TopicTestGroup" /* Topic */,
+                Message msg = new Message("TestAutoCreateTopic" /* Topic */,
                     "TagA" /* Tag */,
                     ("Hello RocketMQ888 " + i).getBytes(RemotingHelper.DEFAULT_CHARSET) /* Message body */
                 );

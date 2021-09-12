@@ -41,6 +41,9 @@ import org.apache.rocketmq.store.config.FlushDiskType;
 import org.apache.rocketmq.store.util.LibC;
 import sun.nio.ch.DirectBuffer;
 
+/**
+ * 一个MappedFile实例对应着一个1G大小的commitLog文件
+ */
 public class MappedFile extends ReferenceResource {
     public static final int OS_PAGE_SIZE = 1024 * 4;
     protected static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -52,16 +55,16 @@ public class MappedFile extends ReferenceResource {
     protected final AtomicInteger committedPosition = new AtomicInteger(0);
     private final AtomicInteger flushedPosition = new AtomicInteger(0);
     protected int fileSize;
-    protected FileChannel fileChannel;
     /**
      * Message will put to here first, and then reput to FileChannel if writeBuffer is not null.
      */
     protected ByteBuffer writeBuffer = null;
+    protected FileChannel fileChannel;
     protected TransientStorePool transientStorePool = null;
     private String fileName;
     private long fileFromOffset;
     private File file;
-    private MappedByteBuffer mappedByteBuffer;
+    private MappedByteBuffer mappedByteBuffer; // 内存映射文件，mappedByteBuffer.put会将消息写入到映射的文件；mappedByteBuffer.get会将映射文件的消息读出来
     private volatile long storeTimestamp = 0;
     private boolean firstCreateInQueue = false;
 
@@ -157,9 +160,9 @@ public class MappedFile extends ReferenceResource {
 
         ensureDirOK(this.file.getParent());
 
-        try {
+        try {// 为commitLog文件创建FileChannel实例
             this.fileChannel = new RandomAccessFile(this.file, "rw").getChannel();
-            this.mappedByteBuffer = this.fileChannel.map(MapMode.READ_WRITE, 0, fileSize);
+            this.mappedByteBuffer = this.fileChannel.map(MapMode.READ_WRITE, 0, fileSize);// 映射整个文件
             TOTAL_MAPPED_VIRTUAL_MEMORY.addAndGet(fileSize);
             TOTAL_MAPPED_FILES.incrementAndGet();
             ok = true;
@@ -202,8 +205,8 @@ public class MappedFile extends ReferenceResource {
 
         int currentPos = this.wrotePosition.get();
 
-        if (currentPos < this.fileSize) {
-            ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : this.mappedByteBuffer.slice();
+        if (currentPos < this.fileSize) {// 将mappedByteBuffer slice一份给byteBuffer，然后byteBuffer操作的是mappedByteBuffer的position到limit这个区间的数据，操作结果也会映射到mappedByteBuffer，因为共用的是底层字节数组
+            ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : this.mappedByteBuffer.slice(); // TODO【QUESTION26】为啥用slice？待分析
             byteBuffer.position(currentPos);
             AppendMessageResult result;
             if (messageExt instanceof MessageExtBrokerInner) {

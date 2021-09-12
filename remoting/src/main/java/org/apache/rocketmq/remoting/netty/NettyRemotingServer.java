@@ -66,8 +66,8 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 public class NettyRemotingServer extends NettyRemotingAbstract implements RemotingServer {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(RemotingHelper.ROCKETMQ_REMOTING);
     private final ServerBootstrap serverBootstrap;
-    private final EventLoopGroup eventLoopGroupSelector;
-    private final EventLoopGroup eventLoopGroupBoss;
+    private final EventLoopGroup eventLoopGroupSelector;// 【重要】reactor线程，worker线程池，用于接收客户端发送的网络字节流
+    private final EventLoopGroup eventLoopGroupBoss;// 【重要】reactor线程池，boss线程池，用于接收客户端连接
     private final NettyServerConfig nettyServerConfig;
 
     private final ExecutorService publicExecutor;
@@ -104,7 +104,10 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         if (publicThreadNums <= 0) {
             publicThreadNums = 4;
         }
-        // TODO 【QUESTION3】publicExecutor这个线程池作用是啥
+        // QUESTION3】publicExecutor这个线程池作用是啥
+        // 【重要】业务线程池，默认情况下，若某个processor不传指定线程池的情况下，与Processor绑定。
+        // 即而处理业务操作放在业务线程池中执行，根据 RomotingCommand 的业务请求码code去processorTable这个本地缓存变量中找到对应的 processor，
+        // 然后封装成task任务后，提交给对应的业务processor处理线程池来执行
         this.publicExecutor = Executors.newFixedThreadPool(publicThreadNums, new ThreadFactory() {
             private AtomicInteger threadIndex = new AtomicInteger(0);
 
@@ -182,7 +185,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
     @Override
     public void start() {
         // 【QUESTION4】已经有了eventLoopGroupBoss和eventLoopGroupSelector线程池，这个defaultEventExecutorGroup又是干嘛的？
-        // 【ANSWER4】此线程池用于netty的编解码，HandshakeHandler，NettyEncoder，NettyConnectManageHandler和NettyServerHandler
+        // 【ANSWER4】【重要】此线程池用于netty的编解码，HandshakeHandler，NettyEncoder，NettyConnectManageHandler和NettyServerHandler
         this.defaultEventExecutorGroup = new DefaultEventExecutorGroup(
             nettyServerConfig.getServerWorkerThreads(),
             new ThreadFactory() {

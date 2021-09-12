@@ -75,7 +75,7 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
 
     private final NettyClientConfig nettyClientConfig;
     private final Bootstrap bootstrap = new Bootstrap();
-    private final EventLoopGroup eventLoopGroupWorker; // 客户端就用一个Netty的线程池即可
+    private final EventLoopGroup eventLoopGroupWorker; // 【重要】客户端就用一个Netty的线程池即可，reactor线程池
     private final Lock lockChannelTables = new ReentrantLock();
     private final ConcurrentMap<String /* addr */, ChannelWrapper> channelTables = new ConcurrentHashMap<String, ChannelWrapper>(); // 维护了Ip地址与ChannelWrapper的映射关系，其中ChannelWrapper封装了Netty的ChannelFuture
     //  【QUESTION5】broker端的ClientHousekeepingService是一个线程，这里为何用timer？ 【ANSWER5】这个timer其实只是定时清理过期请求future而已
@@ -85,7 +85,9 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
     private final AtomicReference<String> namesrvAddrChoosed = new AtomicReference<String>();
     private final AtomicInteger namesrvIndex = new AtomicInteger(initValueIndex());
     private final Lock lockNamesrvChannel = new ReentrantLock();
-
+    // 【重要】业务线程池，默认情况下，若某个processor不传指定线程池的情况下，与Processor绑定。
+    // 即而处理业务操作放在业务线程池中执行，根据 RomotingCommand 的业务请求码code去processorTable这个本地缓存变量中找到对应的 processor，
+    // 然后封装成task任务后，提交给对应的业务processor处理线程池来执行
     private final ExecutorService publicExecutor;
 
     /**
@@ -93,6 +95,7 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
      */
     private ExecutorService callbackExecutor;
     private final ChannelEventListener channelEventListener;
+    // 【重要】编解码线程池：在真正执行业务逻辑之前需要进行SSL验证、编解码、空闲检查、网络连接管理
     private DefaultEventExecutorGroup defaultEventExecutorGroup;
 
     public NettyRemotingClient(final NettyClientConfig nettyClientConfig) {

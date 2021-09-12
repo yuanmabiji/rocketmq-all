@@ -38,12 +38,13 @@ public class MappedFileQueue {
     private final String storePath;
 
     private final int mappedFileSize;
-
+    // mappedFiles：在broker启动时，加载所有的commitLog（1G大小）文件进mappedFiles集合
     private final CopyOnWriteArrayList<MappedFile> mappedFiles = new CopyOnWriteArrayList<MappedFile>();
 
     private final AllocateMappedFileService allocateMappedFileService;
-
+    // 刷盘指针，该指针之前的全部数据已经刷到磁盘
     private long flushedWhere = 0;
+    // ByteBuffer的写指针，总是大于等于flushedWhere
     private long committedWhere = 0;
 
     private volatile long storeTimestamp = 0;
@@ -146,7 +147,7 @@ public class MappedFileQueue {
 
     public boolean load() {
         File dir = new File(this.storePath);
-        File[] files = dir.listFiles();
+        File[] files = dir.listFiles(); // 获取storePath下的所有commitLog文件
         if (files != null) {
             // ascending order
             Arrays.sort(files);
@@ -164,7 +165,7 @@ public class MappedFileQueue {
                     mappedFile.setWrotePosition(this.mappedFileSize);
                     mappedFile.setFlushedPosition(this.mappedFileSize);
                     mappedFile.setCommittedPosition(this.mappedFileSize);
-                    this.mappedFiles.add(mappedFile);
+                    this.mappedFiles.add(mappedFile); // 将commitLog文件添加进mappedFiles集合
                     log.info("load " + file.getPath() + " OK");
                 } catch (IOException e) {
                     log.error("load file " + file + " error", e);

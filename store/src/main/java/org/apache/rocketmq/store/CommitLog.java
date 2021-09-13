@@ -616,7 +616,7 @@ public class CommitLog {
             result = mappedFile.appendMessage(msg, this.appendMessageCallback);// TODO 【QUESTION】待分析：当执行完这行代码，消费者就已经接收到了生产者发送的消息，如何触发的？
             switch (result.getStatus()) {
                 case PUT_OK:
-                    break;
+                    break; // TODO 未完待续
                 case END_OF_FILE:
                     unlockMappedFile = mappedFile;
                     // Create a new file, re-write the message

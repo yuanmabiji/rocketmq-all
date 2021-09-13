@@ -36,7 +36,7 @@ public class Consumer {
         /*
          * Instantiate with specified consumer group name.
          */
-        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("consumer3");
+        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("TestTwoMasterTwoSlave_Consumer");
 
         /*
          * Specify name server addresses.
@@ -59,7 +59,7 @@ public class Consumer {
         /*
          * Subscribe one more more topics to consume.
          */
-        consumer.subscribe("TestAutoCreateTopic", "*");
+        consumer.subscribe("TestTwoMasterTwoSlave", "*");
 
         /*
          *  Register callback to execute on arrival of messages fetched from brokers.
@@ -69,7 +69,10 @@ public class Consumer {
             @Override
             public ConsumeConcurrentlyStatus consumeMessage(List<MessageExt> msgs, ConsumeConcurrentlyContext context) {
                 try {
-                    System.out.println("收到消息：" + new String(msgs.get(0).getBody(), RemotingHelper.DEFAULT_CHARSET));
+                    for (int i = 0; i < msgs.size(); i++) {
+                        System.out.println("收到消息：" + new String(msgs.get(i).getBody(), RemotingHelper.DEFAULT_CHARSET));
+                    }
+
                 } catch (Exception e) {
                     e.printStackTrace();
                 }

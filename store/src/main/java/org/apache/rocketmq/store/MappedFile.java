@@ -51,7 +51,7 @@ public class MappedFile extends ReferenceResource {
     private static final AtomicLong TOTAL_MAPPED_VIRTUAL_MEMORY = new AtomicLong(0);
 
     private static final AtomicInteger TOTAL_MAPPED_FILES = new AtomicInteger(0);
-    protected final AtomicInteger wrotePosition = new AtomicInteger(0);
+    protected final AtomicInteger wrotePosition = new AtomicInteger(0);// TODO 【QEUSTION】wrotePosition,committedPosition和flushedPosition是何时初始化的？
     protected final AtomicInteger committedPosition = new AtomicInteger(0);
     private final AtomicInteger flushedPosition = new AtomicInteger(0);
     protected int fileSize;
@@ -62,9 +62,9 @@ public class MappedFile extends ReferenceResource {
     protected FileChannel fileChannel;
     protected TransientStorePool transientStorePool = null;
     private String fileName;
-    private long fileFromOffset;
+    private long fileFromOffset; // TODO 【QUESTION】这个是干嘛的
     private File file;
-    private MappedByteBuffer mappedByteBuffer; // 内存映射文件，mappedByteBuffer.put会将消息写入到映射的文件；mappedByteBuffer.get会将映射文件的消息读出来
+    private MappedByteBuffer mappedByteBuffer; // commitLog内存映射文件，mappedByteBuffer.put会将消息写入到映射的文件；mappedByteBuffer.get会将映射文件的消息读出来
     private volatile long storeTimestamp = 0;
     private boolean firstCreateInQueue = false;
 
@@ -207,7 +207,7 @@ public class MappedFile extends ReferenceResource {
 
         if (currentPos < this.fileSize) {// 将mappedByteBuffer slice一份给byteBuffer，然后byteBuffer操作的是mappedByteBuffer的position到limit这个区间的数据，操作结果也会映射到mappedByteBuffer，因为共用的是底层字节数组
             ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : this.mappedByteBuffer.slice(); // TODO【QUESTION26】为啥用slice？待分析
-            byteBuffer.position(currentPos);
+            byteBuffer.position(currentPos);// TODO 待分析，因为mappedByteBuffer.slice()后的byteBuffer的Position会变0?同时mappedByteBuffer的position也为0？能映射的时候就将Position变为limit处即文件尾？自己做个小demo看看？
             AppendMessageResult result;
             if (messageExt instanceof MessageExtBrokerInner) {
                 result = cb.doAppend(this.getFileFromOffset(), byteBuffer, this.fileSize - currentPos, (MessageExtBrokerInner) messageExt);
@@ -216,7 +216,7 @@ public class MappedFile extends ReferenceResource {
             } else {
                 return new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
             }
-            this.wrotePosition.addAndGet(result.getWroteBytes());
+            this.wrotePosition.addAndGet(result.getWroteBytes()); // 一条消息过来写入了多少字节，那么wrotePosition也增加多少字节
             this.storeTimestamp = result.getStoreTimestamp();
             return result;
         }

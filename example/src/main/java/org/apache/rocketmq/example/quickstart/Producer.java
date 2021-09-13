@@ -31,7 +31,7 @@ public class Producer {
         /*
          * Instantiate with a producer group name.
          */
-        DefaultMQProducer producer = new DefaultMQProducer("producer");
+        DefaultMQProducer producer = new DefaultMQProducer("TestTwoMasterTwoSlave_producer");
 
         /*
          * Specify name server addresses.
@@ -51,15 +51,15 @@ public class Producer {
         producer.setNamesrvAddr("127.0.0.1:9876");
         producer.start();
 
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < 1; i++) {
             try {
 
                 /*
                  * Create a message instance, specifying topic, tag and message body.
                  */
-                Message msg = new Message("TestAutoCreateTopic" /* Topic */,
+                Message msg = new Message("TestTwoMasterTwoSlave" /* Topic */,
                     "TagA" /* Tag */,
-                    ("Hello RocketMQ888 " + i).getBytes(RemotingHelper.DEFAULT_CHARSET) /* Message body */
+                    ("Hello RocketMQ999 " + i).getBytes(RemotingHelper.DEFAULT_CHARSET) /* Message body */
                 );
 
                 /*

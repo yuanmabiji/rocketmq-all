@@ -612,8 +612,8 @@ public class CommitLog {
                 beginTimeInLock = 0;
                 return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.CREATE_MAPEDFILE_FAILED, null));
             }
-
-            result = mappedFile.appendMessage(msg, this.appendMessageCallback);
+            // mappedFile为对应1G大小的commitLog文件
+            result = mappedFile.appendMessage(msg, this.appendMessageCallback);// TODO 【QUESTION】待分析：当执行完这行代码，消费者就已经接收到了生产者发送的消息，如何触发的？
             switch (result.getStatus()) {
                 case PUT_OK:
                     break;
@@ -1607,7 +1607,7 @@ public class CommitLog {
                 return new AppendMessageResult(AppendMessageStatus.END_OF_FILE, wroteOffset, maxBlank, msgId, msgInner.getStoreTimestamp(),
                     queueOffset, CommitLog.this.defaultMessageStore.now() - beginTimeMills);
             }
-
+            // msgStoreItemMemory在新建CommitLog实例时就被初始化
             // Initialization of storage space
             this.resetByteBuffer(msgStoreItemMemory, msgLen);
             // 1 TOTALSIZE
@@ -1654,7 +1654,7 @@ public class CommitLog {
 
             final long beginTimeMills = CommitLog.this.defaultMessageStore.now();
             // Write messages to the queue buffer
-            byteBuffer.put(this.msgStoreItemMemory.array(), 0, msgLen);
+            byteBuffer.put(this.msgStoreItemMemory.array(), 0, msgLen); // 【重要】将消息字节内容写入commitLog的内存映射文件，操作系统会不定时将其刷入到磁盘， 然后有其他后台定时任务线程会不断检测commitLog大小然后来通知消费者消费？TODO 待分析
 
             AppendMessageResult result = new AppendMessageResult(AppendMessageStatus.PUT_OK, wroteOffset, msgLen, msgId,
                 msgInner.getStoreTimestamp(), queueOffset, CommitLog.this.defaultMessageStore.now() - beginTimeMills);

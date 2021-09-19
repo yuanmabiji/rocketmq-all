@@ -235,7 +235,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             messageFilter = new ExpressionMessageFilter(subscriptionData, consumerFilterData,
                 this.brokerController.getConsumerFilterManager());
         }
-
+        // 【重要】consumer拉取消息时，这里调用this.brokerController.getMessageStore().getMessage方法真正从commitLog中取出消息
         final GetMessageResult getMessageResult =
             this.brokerController.getMessageStore().getMessage(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
                 requestHeader.getQueueId(), requestHeader.getQueueOffset(), requestHeader.getMaxMsgNums(), messageFilter);
@@ -262,7 +262,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                     }
                     break;
             }
-
+            // TODO QUESTION:前面248行代码不是有建议消费者下次消费消息时从master还是slave拉取的逻辑了么？为啥这里还有这个？逻辑重复了？
             if (this.brokerController.getBrokerConfig().isSlaveReadEnable()) {
                 // consume too slow ,redirect to another machine
                 if (getMessageResult.isSuggestPullingFromSlave()) {
@@ -325,7 +325,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                     assert false;
                     break;
             }
-
+            // 消息消费钩子
             if (this.hasConsumeMessageHook()) {
                 ConsumeMessageContext context = new ConsumeMessageContext();
                 context.setConsumerGroup(requestHeader.getConsumerGroup());
@@ -369,7 +369,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             }
 
             switch (response.getCode()) {
-                case ResponseCode.SUCCESS:
+                case ResponseCode.SUCCESS: // 成功找到消息
 
                     this.brokerController.getBrokerStatsManager().incGroupGetNums(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
                         getMessageResult.getMessageCount());
@@ -406,7 +406,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                         response = null;
                     }
                     break;
-                case ResponseCode.PULL_NOT_FOUND:
+                case ResponseCode.PULL_NOT_FOUND: // 消息未找到
 
                     if (brokerAllowSuspend && hasSuspendFlag) {
                         long pollingTimeMills = suspendTimeoutMillisLong;
@@ -419,12 +419,12 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                         int queueId = requestHeader.getQueueId();
                         PullRequest pullRequest = new PullRequest(request, channel, pollingTimeMills,
                             this.brokerController.getMessageStore().now(), offset, subscriptionData, messageFilter);
-                        this.brokerController.getPullRequestHoldService().suspendPullRequest(topic, queueId, pullRequest);
+                        this.brokerController.getPullRequestHoldService().suspendPullRequest(topic, queueId, pullRequest);// 重要，如果是consumer来broker端拉取消息，没找到消息，此时会调用PullRequestHoldService的suspendPullRequest方法将request放入PullRequestHoldService的pullRequestTable
                         response = null;
                         break;
                     }
 
-                case ResponseCode.PULL_RETRY_IMMEDIATELY:
+                case ResponseCode.PULL_RETRY_IMMEDIATELY: // 立即重试
                     break;
                 case ResponseCode.PULL_OFFSET_MOVED:
                     if (this.brokerController.getMessageStoreConfig().getBrokerRole() != BrokerRole.SLAVE
@@ -489,11 +489,11 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
 
     private byte[] readGetMessageResult(final GetMessageResult getMessageResult, final String group, final String topic,
         final int queueId) {
-        final ByteBuffer byteBuffer = ByteBuffer.allocate(getMessageResult.getBufferTotalSize());
+        final ByteBuffer byteBuffer = ByteBuffer.allocate(getMessageResult.getBufferTotalSize()); // 新建一个读取到消息大小的bytebuffer
 
         long storeTimestamp = 0;
         try {
-            List<ByteBuffer> messageBufferList = getMessageResult.getMessageBufferList();
+            List<ByteBuffer> messageBufferList = getMessageResult.getMessageBufferList(); // 获取到读取到消息的list
             for (ByteBuffer bb : messageBufferList) {
 
                 byteBuffer.put(bb);
@@ -518,7 +518,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
         }
 
         this.brokerController.getBrokerStatsManager().recordDiskFallBehindTime(group, topic, queueId, this.brokerController.getMessageStore().now() - storeTimestamp);
-        return byteBuffer.array();
+        return byteBuffer.array(); // 返回到读取到消息的字节数组
     }
 
     private void generateOffsetMovedEvent(final OffsetMovedEvent event) {
@@ -552,13 +552,13 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
         Runnable run = new Runnable() {
             @Override
             public void run() {
-                try {
+                try {// 从commitLog获取到消息后，并把消息封装进response的body字节数组成员变量中
                     final RemotingCommand response = PullMessageProcessor.this.processRequest(channel, request, false);
 
                     if (response != null) {
                         response.setOpaque(request.getOpaque());
                         response.markResponseType();
-                        try {
+                        try {//
                             channel.writeAndFlush(response).addListener(new ChannelFutureListener() {
                                 @Override
                                 public void operationComplete(ChannelFuture future) throws Exception {

@@ -32,7 +32,7 @@ public class ConsumeQueue {
     private static final InternalLogger LOG_ERROR = InternalLoggerFactory.getLogger(LoggerName.STORE_ERROR_LOGGER_NAME);
 
     private final DefaultMessageStore defaultMessageStore;
-
+    // 对应consumeQueue某个topic下的文件
     private final MappedFileQueue mappedFileQueue;
     private final String topic;
     private final int queueId;
@@ -432,9 +432,9 @@ public class ConsumeQueue {
 
         this.byteBufferIndex.flip();
         this.byteBufferIndex.limit(CQ_STORE_UNIT_SIZE);
-        this.byteBufferIndex.putLong(offset);
-        this.byteBufferIndex.putInt(size);
-        this.byteBufferIndex.putLong(tagsCode);
+        this.byteBufferIndex.putLong(offset);// 写入该条消息commitLog的物理偏移地址
+        this.byteBufferIndex.putInt(size); // 写入该条消息的大小
+        this.byteBufferIndex.putLong(tagsCode); // 写入该条消息的hashCode TODO QUESTION:待分析，producer的tags是通过properties传过来的？
 
         final long expectLogicOffset = cqOffset * CQ_STORE_UNIT_SIZE;
 

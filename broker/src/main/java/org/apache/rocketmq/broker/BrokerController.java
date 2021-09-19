@@ -148,7 +148,7 @@ public class BrokerController {
     private RemotingServer fastRemotingServer;
     private TopicConfigManager topicConfigManager;
     private ExecutorService sendMessageExecutor;
-    private ExecutorService pullMessageExecutor;
+    private ExecutorService pullMessageExecutor; // broker服务端接收consumer client端拉取请求消息的业务线程池
     private ExecutorService replyMessageExecutor;
     private ExecutorService queryMessageExecutor;
     private ExecutorService adminBrokerExecutor;

@@ -550,7 +550,7 @@ public class DefaultMessageStore implements MessageStore {
     public CommitLog getCommitLog() {
         return commitLog;
     }
-
+    // 重要，根据要消费的offset从consumeQueue取出commitLog的物理地址和该消息大小，然后从commitLog取出消息
     public GetMessageResult getMessage(final String group, final String topic, final int queueId, final long offset,
         final int maxMsgNums,
         final MessageFilter messageFilter) {
@@ -573,11 +573,11 @@ public class DefaultMessageStore implements MessageStore {
 
         GetMessageResult getResult = new GetMessageResult();
 
-        final long maxOffsetPy = this.commitLog.getMaxOffset();
-
+        final long maxOffsetPy = this.commitLog.getMaxOffset(); // 取出当前commitLog最大的物理地址
+        // 【1】先根据topic和queueId找到对应的conumseQueue
         ConsumeQueue consumeQueue = findConsumeQueue(topic, queueId);
         if (consumeQueue != null) {
-            minOffset = consumeQueue.getMinOffsetInQueue();
+            minOffset = consumeQueue.getMinOffsetInQueue();// 分别取出consumeQueue的minOffset和maxOffset（当前映射了第几个消息）
             maxOffset = consumeQueue.getMaxOffsetInQueue();
 
             if (maxOffset == 0) {
@@ -596,8 +596,8 @@ public class DefaultMessageStore implements MessageStore {
                 } else {
                     nextBeginOffset = nextOffsetCorrection(offset, maxOffset);
                 }
-            } else {
-                SelectMappedBufferResult bufferConsumeQueue = consumeQueue.getIndexBuffer(offset);
+            } else {// offset < maxOffset，一般会执行到这里，表示consumer消费的offset小于当前consumeQueue的masOffset，即有新到来的消息未消费
+                SelectMappedBufferResult bufferConsumeQueue = consumeQueue.getIndexBuffer(offset); // 【2】根据consumer的消费offset从consumeQueue中取出对应的一条消息对应的ByteBuffer字节数组
                 if (bufferConsumeQueue != null) {
                     try {
                         status = GetMessageStatus.NO_MATCHED_MESSAGE;
@@ -610,9 +610,9 @@ public class DefaultMessageStore implements MessageStore {
                         final boolean diskFallRecorded = this.messageStoreConfig.isDiskFallRecorded();
                         ConsumeQueueExt.CqExtUnit cqExtUnit = new ConsumeQueueExt.CqExtUnit();
                         for (; i < bufferConsumeQueue.getSize() && i < maxFilterMessageCount; i += ConsumeQueue.CQ_STORE_UNIT_SIZE) {
-                            long offsetPy = bufferConsumeQueue.getByteBuffer().getLong();
-                            int sizePy = bufferConsumeQueue.getByteBuffer().getInt();
-                            long tagsCode = bufferConsumeQueue.getByteBuffer().getLong();
+                            long offsetPy = bufferConsumeQueue.getByteBuffer().getLong(); // 【3】从consumeQueue中取出consumer要消费的第offset条消息中对应commitLog的物理地址
+                            int sizePy = bufferConsumeQueue.getByteBuffer().getInt(); // 【3】从consumeQueue中取出consumer要消费的第offset条消息大小
+                            long tagsCode = bufferConsumeQueue.getByteBuffer().getLong(); // 【3】从consumeQueue中取出consumer要消费的第offset条消息的tagsCode
 
                             maxPhyOffsetPulling = offsetPy;
 
@@ -620,7 +620,7 @@ public class DefaultMessageStore implements MessageStore {
                                 if (offsetPy < nextPhyFileStartOffset)
                                     continue;
                             }
-
+                            // TODO QUESTION:checkInDiskByCommitOffset是判断数据刷盘了吗？待分析
                             boolean isInDisk = checkInDiskByCommitOffset(offsetPy, maxOffsetPy);
 
                             if (this.isTheBatchFull(sizePy, maxMsgNums, getResult.getBufferTotalSize(), getResult.getMessageCount(),
@@ -649,7 +649,7 @@ public class DefaultMessageStore implements MessageStore {
 
                                 continue;
                             }
-
+                            // 【4】最终调用commitLog.getMessage(offsetPy, sizePy)方法根据该消息的物理地址和大小从commitLog中取出该条消息对应的byteBuffer（只不过该byteBuffer是slice出来的，原来的物理地址变成了0相对地址（两个byteBuffer之间slice还是会互相影响的））封装到SelectMappedBufferResult实例中
                             SelectMappedBufferResult selectResult = this.commitLog.getMessage(offsetPy, sizePy);
                             if (null == selectResult) {
                                 if (getResult.getBufferTotalSize() == 0) {
@@ -669,9 +669,9 @@ public class DefaultMessageStore implements MessageStore {
                                 selectResult.release();
                                 continue;
                             }
-
+                            // 统计有关
                             this.storeStatsService.getGetMessageTransferedMsgCount().incrementAndGet();
-                            getResult.addMessage(selectResult);
+                            getResult.addMessage(selectResult);// 【5】最终将selectResult加入到GetMessageResult的messageMapedList集合中
                             status = GetMessageStatus.FOUND;
                             nextPhyFileStartOffset = Long.MIN_VALUE;
                         }
@@ -680,9 +680,9 @@ public class DefaultMessageStore implements MessageStore {
                             long fallBehind = maxOffsetPy - maxPhyOffsetPulling;
                             brokerStatsManager.recordDiskFallBehindSize(group, topic, queueId, fallBehind);
                         }
-
+                        // 【6】下一个要从consumeQueue要消费的offset即下一次consumer要从conumseQueue的第几个消息开始消费，这个值最终要返回给consumer的
                         nextBeginOffset = offset + (i / ConsumeQueue.CQ_STORE_UNIT_SIZE);
-
+                        // 【7】这里首先根据该broker上consmeQueue的消费地址是否远远落后于ocmmitLog的最大offset地址，若超过memory的话，此时就会建议consumer下次拉取消息时从slave节点拉取了 TODO QUESTION:slave节点跟master节点可以理解为镜像关系，这几个值一般不都是一样的么？待分析
                         long diff = maxOffsetPy - maxPhyOffsetPulling;
                         long memory = (long) (StoreUtil.TOTAL_PHYSICAL_MEMORY_SIZE
                             * (this.messageStoreConfig.getAccessMessageInMemoryMaxRatio() / 100.0));
@@ -710,7 +710,7 @@ public class DefaultMessageStore implements MessageStore {
         }
         long elapsedTime = this.getSystemClock().now() - beginTime;
         this.storeStatsService.setGetMessageEntireTimeMax(elapsedTime);
-
+        // 设置这次consumer从broker获取消息时的一些信息，返回给consumer
         getResult.setStatus(status);
         getResult.setNextBeginOffset(nextBeginOffset);
         getResult.setMaxOffset(maxOffset);

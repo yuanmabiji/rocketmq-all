@@ -30,7 +30,7 @@ import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
-
+// request和response都用的RemotingCommand，该实例序列化后用于网络传输
 public class RemotingCommand {
     public static final String SERIALIZE_TYPE_PROPERTY = "rocketmq.serialize.type";
     public static final String SERIALIZE_TYPE_ENV = "ROCKETMQ_SERIALIZE_TYPE";
@@ -75,7 +75,7 @@ public class RemotingCommand {
     private int opaque = requestId.getAndIncrement();
     private int flag = 0;
     private String remark;
-    private HashMap<String, String> extFields;
+    private HashMap<String, String> extFields; // 1,当consumer发送request请求（RemotingCommand实例）从broker拉取消息时，extFields集合存储了consumeQueueId,suspendTimeoutMills,tipic，consumeOffset(待消费的消息数量地址)，consumerGroup等消费信息；2，
     private transient CommandCustomHeader customHeader;// 请求头
 
     private SerializeType serializeTypeCurrentRPC = serializeTypeConfigInThisServer;

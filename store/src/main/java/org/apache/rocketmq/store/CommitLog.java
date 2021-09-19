@@ -335,7 +335,7 @@ public class CommitLog {
 
                 String tags = propertiesMap.get(MessageConst.PROPERTY_TAGS);
                 if (tags != null && tags.length() > 0) {
-                    tagsCode = MessageExtBrokerInner.tagsString2tagsCode(MessageExt.parseTopicFilterType(sysFlag), tags);
+                    tagsCode = MessageExtBrokerInner.tagsString2tagsCode(MessageExt.parseTopicFilterType(sysFlag), tags);// 计算tagsCode，后面对应于consumeQueue一个消息条目中tag hashcode
                 }
 
                 // Timing message processing

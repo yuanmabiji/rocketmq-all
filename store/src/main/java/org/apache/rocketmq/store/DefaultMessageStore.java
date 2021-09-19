@@ -1909,7 +1909,7 @@ public class DefaultMessageStore implements MessageStore {
         private boolean isCommitLogAvailable() {
             return this.reputFromOffset < DefaultMessageStore.this.commitLog.getMaxOffset();
         }
-
+        // TODO QUESTION:搞清楚刷盘方式跟构建consumeQueue和indexFile之间的关系，如果宕机了会有数据不一致么？还有生产者重发消息会怎样？
         private void doReput() {
             if (this.reputFromOffset < DefaultMessageStore.this.commitLog.getMinOffset()) {
                 log.warn("The reputFromOffset={} is smaller than minPyOffset={}, this usually indicate that the dispatch behind too much and the commitlog has expired.",
@@ -1922,21 +1922,23 @@ public class DefaultMessageStore implements MessageStore {
                     && this.reputFromOffset >= DefaultMessageStore.this.getConfirmOffset()) {
                     break;
                 }
-
-                SelectMappedBufferResult result = DefaultMessageStore.this.commitLog.getData(reputFromOffset);
+                // 【1】从commitLog中根据reputFromOffset取出要要转发构建consumeQueue和indexFile的数据，并封装进SelectMappedBufferResult实例
+                SelectMappedBufferResult result = DefaultMessageStore.this.commitLog.getData(reputFromOffset);// TODO QUESTION:reputFromOffset如何赋值的？消息转发构建consumeQueue和indexFile需要刷盘后吗？消息被消费者消费需要刷盘后吗？如果不需要刷盘后，假如消息被消费后，刷盘失败怎么办？待分析
                 if (result != null) {
                     try {
                         this.reputFromOffset = result.getStartOffset();
 
                         for (int readSize = 0; readSize < result.getSize() && doNext; ) {
+                            // 【2】根据从commitLog读取的需要reput的byteBuffer的数据构建DispatchRequest实例
                             DispatchRequest dispatchRequest =
                                 DefaultMessageStore.this.commitLog.checkMessageAndReturnSize(result.getByteBuffer(), false, false);
                             int size = dispatchRequest.getBufferSize() == -1 ? dispatchRequest.getMsgSize() : dispatchRequest.getBufferSize();
 
                             if (dispatchRequest.isSuccess()) {
                                 if (size > 0) {
+                                    // 【3】根据dispatchRequest来转发分别构建consumeQueue和indexFile
                                     DefaultMessageStore.this.doDispatch(dispatchRequest);
-
+                                    // 【4】如果该broker不是slave节点且开启了consumer长轮询读取broker消息机制，此时要调用messageArrivingListener.arriving方法“唤醒”consumer的长连接并将消息发送给consumer
                                     if (BrokerRole.SLAVE != DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole()
                                         && DefaultMessageStore.this.brokerConfig.isLongPollingEnable()) {
                                         DefaultMessageStore.this.messageArrivingListener.arriving(dispatchRequest.getTopic(),
@@ -1944,7 +1946,7 @@ public class DefaultMessageStore implements MessageStore {
                                             dispatchRequest.getTagsCode(), dispatchRequest.getStoreTimestamp(),
                                             dispatchRequest.getBitMap(), dispatchRequest.getPropertiesMap());
                                     }
-
+                                    // 【5】根据dispatchRequest来转发分别构建consumeQueue和indexFile后，此时reputFromOffset增加该消息的相应字节数大小
                                     this.reputFromOffset += size;
                                     readSize += size;
                                     if (DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole() == BrokerRole.SLAVE) {

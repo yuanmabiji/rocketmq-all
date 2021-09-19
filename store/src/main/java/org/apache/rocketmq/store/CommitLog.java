@@ -613,7 +613,7 @@ public class CommitLog {
                 return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.CREATE_MAPEDFILE_FAILED, null));
             }
             // mappedFile为对应1G大小的commitLog文件
-            result = mappedFile.appendMessage(msg, this.appendMessageCallback);// TODO 【QUESTION】待分析：当执行完这行代码，消费者就已经接收到了生产者发送的消息，如何触发的？
+            result = mappedFile.appendMessage(msg, this.appendMessageCallback);// 【QUESTION】待分析：当执行完这行代码，消费者就已经接收到了生产者发送的消息，如何触发的？ ANSWER:有两方面触发发消息给consumer，一是每隔1ms执行的reput线程，二是每隔5秒的长轮询线程
             switch (result.getStatus()) {
                 case PUT_OK:
                     break; // TODO 未完待续
@@ -1423,6 +1423,7 @@ public class CommitLog {
                         // two times the flush
                         boolean flushOK = false;
                         for (int i = 0; i < 2 && !flushOK; i++) {
+                            // 如果mappedFileQueue的flushedWhere刷盘指针大于要刷盘的flushedWhere指针，说明已经刷盘完毕了 TODO QUESTION:flushedWhere刷盘指针赋值好像总是调用flush方法才会被赋值，但是记得MappedByteBuffer有时即使在不显式调用force的情况下，操作系统也会不定时的刷盘，此时又是如何更新flushedWhere刷盘指针的呢？还有force方法是同步阻塞 吗？待分析
                             flushOK = CommitLog.this.mappedFileQueue.getFlushedWhere() >= req.getNextOffset();
 
                             if (!flushOK) {

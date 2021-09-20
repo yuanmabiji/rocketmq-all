@@ -195,12 +195,12 @@ public abstract class NettyRemotingAbstract {
         final int opaque = cmd.getOpaque();
 
         if (pair != null) {
-            Runnable run = new Runnable() {
+            Runnable run = new Runnable() { // 新建一个Runnable实例，提交给业务线程池执行
                 @Override
                 public void run() {
                     try {
-                        doBeforeRpcHooks(RemotingHelper.parseChannelRemoteAddr(ctx.channel()), cmd);
-                        final RemotingResponseCallback callback = new RemotingResponseCallback() {
+                        doBeforeRpcHooks(RemotingHelper.parseChannelRemoteAddr(ctx.channel()), cmd);// 【1】执行rpc的before钩子
+                        final RemotingResponseCallback callback = new RemotingResponseCallback() { // 【2】新建一个callback实例，用于同步或异步回调，主要用来返回response给调用方
                             @Override
                             public void callback(RemotingCommand response) {
                                 doAfterRpcHooks(RemotingHelper.parseChannelRemoteAddr(ctx.channel()), cmd, response);
@@ -208,7 +208,7 @@ public abstract class NettyRemotingAbstract {
                                     if (response != null) {
                                         response.setOpaque(opaque);
                                         response.markResponseType();
-                                        try {
+                                        try { // TODO QUESTION:对于broker端来说，SendMessageProcessor.doResponse方法已经返回消息给请求端了，为啥这里还要再返回一次？待分析
                                             ctx.writeAndFlush(response);
                                         } catch (Throwable e) {
                                             log.error("process request over, but response failed", e);
@@ -219,11 +219,11 @@ public abstract class NettyRemotingAbstract {
                                     }
                                 }
                             }
-                        };
-                        if (pair.getObject1() instanceof AsyncNettyRequestProcessor) {
+                        };// 看看该请求对应的processor是哪种类型，同步还是异步？
+                        if (pair.getObject1() instanceof AsyncNettyRequestProcessor) {// 异步的话，那么直接在异步线程池中回调callback
                             AsyncNettyRequestProcessor processor = (AsyncNettyRequestProcessor)pair.getObject1();
                             processor.asyncProcessRequest(ctx, cmd, callback);
-                        } else {
+                        } else {// 同步的话，还是在本线程(sendMessageExecutor的线程)中回调callback
                             NettyRequestProcessor processor = pair.getObject1();
                             RemotingCommand response = processor.processRequest(ctx, cmd);
                             callback.callback(response);
@@ -259,9 +259,9 @@ public abstract class NettyRemotingAbstract {
                 return;
             }
 
-            try {
+            try {// 封装run实例进RequestTask，然后提交给业务线程池sendMessageExecutor进行执行
                 final RequestTask requestTask = new RequestTask(run, ctx.channel(), cmd);
-                pair.getObject2().submit(requestTask); // 取出业务线程池进行执行
+                pair.getObject2().submit(requestTask); // 取出业务线程池sendMessageExecutor进行执行requestTask
             } catch (RejectedExecutionException e) {
                 if ((System.currentTimeMillis() % 10000) == 0) {
                     log.warn(RemotingHelper.parseChannelRemoteAddr(ctx.channel())

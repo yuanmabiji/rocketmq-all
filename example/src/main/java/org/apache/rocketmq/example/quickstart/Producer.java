@@ -59,7 +59,7 @@ public class Producer {
                  */
                 Message msg = new Message("TestTwoMasterTwoSlave" /* Topic */,
                     "TagA" /* Tag */,
-                    ("Hello yuanmabiji " + i).getBytes(RemotingHelper.DEFAULT_CHARSET) /* Message body */
+                    ("Hello jinyue233 " + i).getBytes(RemotingHelper.DEFAULT_CHARSET) /* Message body */
                 );
 
                 /*

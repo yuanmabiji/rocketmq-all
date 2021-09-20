@@ -122,7 +122,7 @@ public abstract class ServiceThread implements Runnable {
 
     public void wakeup() {
         if (hasNotified.compareAndSet(false, true)) {
-            waitPoint.countDown(); // notify
+            waitPoint.countDown(); // notify 当前线程
         }
     }
 
@@ -131,7 +131,7 @@ public abstract class ServiceThread implements Runnable {
             this.onWaitEnd();
             return;
         }
-
+        // TODO QUESTION:这里为啥要加reset呢？不加会怎样
         //entry to wait
         waitPoint.reset();
 

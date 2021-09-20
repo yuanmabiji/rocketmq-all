@@ -613,7 +613,7 @@ public class CommitLog {
                 return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.CREATE_MAPEDFILE_FAILED, null));
             }
             // mappedFile为对应1G大小的commitLog文件
-            result = mappedFile.appendMessage(msg, this.appendMessageCallback);// 【QUESTION】待分析：当执行完这行代码，消费者就已经接收到了生产者发送的消息，如何触发的？ ANSWER:有两方面触发发消息给consumer，一是每隔1ms执行的reput线程，二是每隔5秒的长轮询线程
+            result = mappedFile.appendMessage(msg, this.appendMessageCallback);// 【QUESTION】待分析：当执行完这行代码，消费者就已经接收到了生产者发送的消息，如何触发的？ ANSWER:有两方面触发发消息给consumer，一是每隔1ms执行的reput线程，二是每隔5秒的长轮询线程 QUESTION:若是同步刷盘方式下，需要刷盘后消费者才能消费到吗？答：让该线程sleep一段时间，即先不让刷盘，看consumer能否消费到消息,经过调试，即使在同步刷盘方式下，不用显式调用刷盘，consumer也会消费到消息 TODO QUESTION:这样的话，如果消费者消费了消息，刷盘失败，在同步刷盘方式下，生产者会再次发送消息，导致消息重复；在异步刷盘方式下，由于刷盘失败，会不会因为conumseQueue与commitLog的数据对应关系不一致而出错？
             switch (result.getStatus()) {
                 case PUT_OK:
                     break; // TODO 未完待续
@@ -660,11 +660,17 @@ public class CommitLog {
         // Statistics
         storeStatsService.getSinglePutMessageTopicTimesTotal(msg.getTopic()).incrementAndGet();
         storeStatsService.getSinglePutMessageTopicSizeTotal(topic).addAndGet(result.getWroteBytes());
+        /*System.out.println("让该线程sleep一段时间，即先不让刷盘，看consumer能否消费到消息");
+        // 让该线程sleep一段时间，即先不让刷盘，看consumer能否消费到消息,经过调试，即使在同步刷盘方式下，不用显式调用刷盘，consumer也会消费到消息
+        try {
+            Thread.sleep(1000000);
+        } catch (Exception e) {
 
-        CompletableFuture<PutMessageStatus> flushResultFuture = submitFlushRequest(result, putMessageResult, msg);
-        CompletableFuture<PutMessageStatus> replicaResultFuture = submitReplicaRequest(result, putMessageResult, msg);
-        return flushResultFuture.thenCombine(replicaResultFuture, (flushStatus, replicaStatus) -> {
-            if (flushStatus != PutMessageStatus.PUT_OK) {
+        }*/
+        CompletableFuture<PutMessageStatus> flushResultFuture = submitFlushRequest(result, putMessageResult, msg); // 刷盘方式，对应SYNC_FLUSH还是ASYNC_FLUSH
+        CompletableFuture<PutMessageStatus> replicaResultFuture = submitReplicaRequest(result, putMessageResult, msg);// 主从同步方式，对应SYNC_MASTER还是ASYNC_MASTER
+        return flushResultFuture.thenCombine(replicaResultFuture, (flushStatus, replicaStatus) -> {// thenCombine需要等待flushResultFuture和replicaResultFuture都complete后才会执行到相应方法体，所以是同步刷盘
+            if (flushStatus != PutMessageStatus.PUT_OK) {// putMessageResult的状态默认是PUT_OK，所以只要flushStatus或replicaStatus不是PUT_OK，那么就设置相应状态，但这里replicaStatus会覆盖flushStatus
                 putMessageResult.setPutMessageStatus(PutMessageStatus.FLUSH_DISK_TIMEOUT);
             }
             if (replicaStatus != PutMessageStatus.PUT_OK) {
@@ -906,12 +912,12 @@ public class CommitLog {
         // Synchronization flush
         if (FlushDiskType.SYNC_FLUSH == this.defaultMessageStore.getMessageStoreConfig().getFlushDiskType()) {
             final GroupCommitService service = (GroupCommitService) this.flushCommitLogService;
-            if (messageExt.isWaitStoreMsgOK()) {
+            if (messageExt.isWaitStoreMsgOK()) {// 需要等待刷盘后才返回
                 GroupCommitRequest request = new GroupCommitRequest(result.getWroteOffset() + result.getWroteBytes(),
-                        this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout());
-                service.putRequest(request);
-                return request.future();
-            } else {
+                        this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout()); // 新建一个GroupCommitRequest实例来封装wroteOffset和wroteBytes等参数，同时新建该实例的同时会新建一个CompletableFuture实例，该实例若complete的话说明已经刷盘成功或超时
+                service.putRequest(request);// 将GroupCommitRequest实例添加到GroupCommitService的requestsWrite集合，并唤醒GroupCommitService线程
+                return request.future();// 返回GroupCommitRequest的
+            } else { // 无需等待刷盘后才返回CompletableFuture实例，用以后续判断有无刷盘成功
                 service.wakeup();
                 return CompletableFuture.completedFuture(PutMessageStatus.PUT_OK);
             }
@@ -926,7 +932,7 @@ public class CommitLog {
             return CompletableFuture.completedFuture(PutMessageStatus.PUT_OK);
         }
     }
-
+    // 从master节点同步数据到slave节点；若是SYNC_MASTER，则需要阻塞等待至slave节点同步完数据；若是ASYNC_MASTER,则立即返回
     public CompletableFuture<PutMessageStatus> submitReplicaRequest(AppendMessageResult result, PutMessageResult putMessageResult,
                                                         MessageExt messageExt) {
         if (BrokerRole.SYNC_MASTER == this.defaultMessageStore.getMessageStoreConfig().getBrokerRole()) {
@@ -1459,7 +1465,7 @@ public class CommitLog {
                     CommitLog.log.warn(this.getServiceName() + " service has exception. ", e);
                 }
             }
-
+            // 如果该线程正常退出的话，那么还会再进行一次刷盘
             // Under normal circumstances shutdown, wait for the arrival of the
             // request, and then flush
             try {

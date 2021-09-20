@@ -76,10 +76,10 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         }
         return response;
     }
-
+    // thenAcceptAsync也是异步执行的
     @Override
-    public void asyncProcessRequest(ChannelHandlerContext ctx, RemotingCommand request, RemotingResponseCallback responseCallback) throws Exception {
-        asyncProcessRequest(ctx, request).thenAcceptAsync(responseCallback::callback, this.brokerController.getSendMessageExecutor());
+    public void asyncProcessRequest(ChannelHandlerContext ctx, RemotingCommand request, RemotingResponseCallback responseCallback) throws Exception {// 【主线】
+        asyncProcessRequest(ctx, request).thenAcceptAsync(responseCallback::callback, this.brokerController.getSendMessageExecutor());// TODO QUESTION:执行本句代码的线程正是业务线程池sendMessageExecutor的线程，此时又用sendMessageExecutor来异步执行callback，为何不干脆是同步执行callback呢？待分析
     }
 
     public CompletableFuture<RemotingCommand> asyncProcessRequest(ChannelHandlerContext ctx,
@@ -98,7 +98,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 if (requestHeader.isBatch()) {
                     return this.asyncSendBatchMessage(ctx, request, mqtraceContext, requestHeader);
                 } else {
-                    return this.asyncSendMessage(ctx, request, mqtraceContext, requestHeader);
+                    return this.asyncSendMessage(ctx, request, mqtraceContext, requestHeader);// 【主线】
                 }
         }
     }
@@ -299,8 +299,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 return CompletableFuture.completedFuture(response);
             }
             putMessageResult = this.brokerController.getTransactionalMessageService().asyncPrepareMessage(msgInner);
-        } else {
-            putMessageResult = this.brokerController.getMessageStore().asyncPutMessage(msgInner);
+        } else {// commitLog.asyncPutMessage(msg)是不是异步还取决于刷盘方式和主从同步方式
+            putMessageResult = this.brokerController.getMessageStore().asyncPutMessage(msgInner);// 【主线】
         }
         return handlePutMessageResultFuture(putMessageResult, response, request, msgInner, responseHeader, mqtraceContext, ctx, queueIdInt);
     }
@@ -312,8 +312,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                                                                             SendMessageResponseHeader responseHeader,
                                                                             SendMessageContext sendMessageContext,
                                                                             ChannelHandlerContext ctx,
-                                                                            int queueIdInt) {
-        return putMessageResult.thenApply((r) ->
+                                                                             int queueIdInt) {
+        return putMessageResult.thenApply((r) -> // thenApply也是异步执行的  TODO QEUSTION:执行handlePutMessageResult方法的线程为啥不是ForkJoinPool的线程呢？待分析
             handlePutMessageResult(r, response, request, msgInner, responseHeader, sendMessageContext, ctx, queueIdInt)
         );
     }
@@ -511,7 +511,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             responseHeader.setMsgId(putMessageResult.getAppendMessageResult().getMsgId());
             responseHeader.setQueueId(queueIdInt);
             responseHeader.setQueueOffset(putMessageResult.getAppendMessageResult().getLogicsOffset());
-
+            // 返回消息给请求端
             doResponse(ctx, request, response);
 
             if (hasSendMessageHook()) {

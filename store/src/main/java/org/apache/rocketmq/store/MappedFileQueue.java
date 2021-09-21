@@ -428,7 +428,7 @@ public class MappedFileQueue {
         MappedFile mappedFile = this.findMappedFileByOffset(this.flushedWhere, this.flushedWhere == 0);
         if (mappedFile != null) {
             long tmpTimeStamp = mappedFile.getStoreTimestamp();
-            int offset = mappedFile.flush(flushLeastPages);
+            int offset = mappedFile.flush(flushLeastPages); // flushLeastPages等于0的话，那么默认会执行刷盘操作
             long where = mappedFile.getFileFromOffset() + offset;
             result = where == this.flushedWhere;
             this.flushedWhere = where;
@@ -446,8 +446,8 @@ public class MappedFileQueue {
         if (mappedFile != null) {
             int offset = mappedFile.commit(commitLeastPages);
             long where = mappedFile.getFileFromOffset() + offset;
-            result = where == this.committedWhere;
-            this.committedWhere = where;
+            result = where == this.committedWhere; // 若where不等于committedWhere，则说明commit成功
+            this.committedWhere = where; // 将where重新赋值给committedWhere
         }
 
         return result;

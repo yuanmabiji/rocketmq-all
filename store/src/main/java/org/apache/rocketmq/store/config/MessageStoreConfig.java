@@ -137,7 +137,9 @@ public class MessageStoreConfig {
     private boolean diskFallRecorded = true;
     private long osPageCacheBusyTimeOutMills = 1000;
     private int defaultQueryMaxNum = 32;
-
+    // 1）该值设置为true，会单独申请一个与commitLog相同大小的堆外内存，同时使用内存锁定，
+    //    目的是确保不会置换到虚拟内存中去即消息先追加到堆外内存，然后再提交到与commitLog对应的映射内存，最后再刷盘；
+    // 2）该值设置为false，则不会单独申请一个与commitLog相同大小的堆外内存，消息直接追加到与commitLog对应的映射内存，最后再刷盘
     @ImportantField
     private boolean transientStorePoolEnable = false;
     private int transientStorePoolSize = 5;

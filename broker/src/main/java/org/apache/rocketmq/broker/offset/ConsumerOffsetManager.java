@@ -33,6 +33,9 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 
+/**
+ * 对应consumerOffset.json
+ */
 public class ConsumerOffsetManager extends ConfigManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private static final String TOPIC_GROUP_SEPARATOR = "@";
@@ -157,7 +160,7 @@ public class ConsumerOffsetManager extends ConfigManager {
     }
 
     @Override
-    public String configFilePath() {
+    public String configFilePath() {// 如返回：D:/code/rocketmq/broker1_master/store/config/consumerOffset.json
         return BrokerPathConfigHelper.getConsumerOffsetPath(this.brokerController.getMessageStoreConfig().getStorePathRootDir());
     }
 

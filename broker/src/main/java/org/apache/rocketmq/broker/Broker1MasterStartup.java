@@ -106,14 +106,17 @@ public class Broker1MasterStartup {
             if (null == commandLine) {
                 System.exit(-1);
             }
-
+            // 新建一个BrokerConfig实例，装着broker相关的配置
             final BrokerConfig brokerConfig = new BrokerConfig();
+            // broker既是服务端（接收producer或consumer的请求）又是客户端（注册心跳到NameServer）
             final NettyServerConfig nettyServerConfig = new NettyServerConfig();
             final NettyClientConfig nettyClientConfig = new NettyClientConfig();
 
             nettyClientConfig.setUseTLS(Boolean.parseBoolean(System.getProperty(TLS_ENABLE,
                 String.valueOf(TlsSystemConfig.tlsMode == TlsMode.ENFORCING))));
+            // 设置broker的监听端口
             nettyServerConfig.setListenPort(8881);
+            // 新建一个MessageStoreConfig实例，存储message store相关的配置
             final MessageStoreConfig messageStoreConfig = new MessageStoreConfig();
 
             if (BrokerRole.SLAVE == messageStoreConfig.getBrokerRole()) {
@@ -146,7 +149,7 @@ public class Broker1MasterStartup {
                 System.out.printf("Please set the %s variable in your environment to match the location of the RocketMQ installation", MixAll.ROCKETMQ_HOME_ENV);
                 System.exit(-2);
             }
-
+            // 获取name server地址
             String namesrvAddr = brokerConfig.getNamesrvAddr();
             if (null != namesrvAddr) {
                 try {
@@ -161,7 +164,7 @@ public class Broker1MasterStartup {
                     System.exit(-3);
                 }
             }
-
+            // 如果该broker是master的话，brokerConfig则需要设置MASTER_ID标志；若是slave的话，则需要保证brokerId大于0
             switch (messageStoreConfig.getBrokerRole()) {
                 case ASYNC_MASTER:
                 case SYNC_MASTER:
@@ -177,11 +180,11 @@ public class Broker1MasterStartup {
                 default:
                     break;
             }
-
+            // DLeger有关
             if (messageStoreConfig.isEnableDLegerCommitLog()) {
                 brokerConfig.setBrokerId(-1);
             }
-
+            // 设置主从数据复制的的监听端口，即broker的常规监听端口+1
             messageStoreConfig.setHaListenPort(nettyServerConfig.getListenPort() + 1);
             LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
             JoranConfigurator configurator = new JoranConfigurator();
@@ -210,7 +213,7 @@ public class Broker1MasterStartup {
             MixAll.printObjectProperties(log, nettyServerConfig);
             MixAll.printObjectProperties(log, nettyClientConfig);
             MixAll.printObjectProperties(log, messageStoreConfig);
-
+            // 新建一个BrokerController实例，将brokerConfig，nettyServerConfig，nettyClientConfig和messageStoreConfig作为参数传进；此外，里面初始化了很多资源：比如各种线程池等
             final BrokerController controller = new BrokerController(
                 brokerConfig,
                 nettyServerConfig,
@@ -218,13 +221,13 @@ public class Broker1MasterStartup {
                 messageStoreConfig);
             // remember all configs to prevent discard
             controller.getConfiguration().registerConfig(properties);
-
+            // 对BrokerController实例进行初始化
             boolean initResult = controller.initialize();
             if (!initResult) {
                 controller.shutdown();
                 System.exit(-3);
             }
-
+            // 注册jvm钩子，在jvm正常退出时进行一些资源的销毁逻等逻辑，比如线程池的关闭或者一些定时线程的退出逻辑（比如刷盘线程退出前需要进行刷盘一次）
             Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
                 private volatile boolean hasShutdown = false;
                 private AtomicInteger shutdownTimes = new AtomicInteger(0);

@@ -21,11 +21,11 @@ import org.apache.rocketmq.common.annotation.ImportantField;
 import org.apache.rocketmq.store.ConsumeQueue;
 
 public class MessageStoreConfig {
-    //The root directory in which the log data is kept
+    //The root directory in which the log data is kept，如：D:/code/rocketmq/broker1_master/store
     @ImportantField
     private String storePathRootDir = System.getProperty("user.home") + File.separator + "store";
 
-    //The directory in which the commitlog is kept
+    //The directory in which the commitlog is kept，如：D:/code/rocketmq/broker1_master/store/storePathCommitLog
     @ImportantField
     private String storePathCommitLog = System.getProperty("user.home") + File.separator + "store"
         + File.separator + "commitlog";
@@ -45,22 +45,22 @@ public class MessageStoreConfig {
     // CommitLog flush interval
     // flush data to disk
     @ImportantField
-    private int flushIntervalCommitLog = 500;
+    private int flushIntervalCommitLog = 500; // 异步刷盘间隔
 
     // Only used if TransientStorePool enabled
     // flush data to FileChannel
     @ImportantField
-    private int commitIntervalCommitLog = 200;
+    private int commitIntervalCommitLog = 200; // 异步刷盘提交消息间隔，只有当transientPool enable的时候才起作用
 
     /**
      * introduced since 4.0.x. Determine whether to use mutex reentrantLock when putting message.<br/>
      * By default it is set to false indicating using spin lock when putting message.
      */
-    private boolean useReentrantLockWhenPutMessage = false;
+    private boolean useReentrantLockWhenPutMessage = false;// 当put message默认使用自旋锁
 
     // Whether schedule flush,default is real-time
     @ImportantField
-    private boolean flushCommitLogTimed = false;
+    private boolean flushCommitLogTimed = false; // 异步刷盘线程停歇决定是sleep还是await TODO QUESTION:两者有啥区别
     // ConsumeQueue flush interval
     private int flushIntervalConsumeQueue = 1000;
     // Resource reclaim interval

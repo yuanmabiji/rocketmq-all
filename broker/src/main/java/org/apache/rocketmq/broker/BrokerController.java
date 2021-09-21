@@ -174,20 +174,23 @@ public class BrokerController {
         final NettyClientConfig nettyClientConfig,
         final MessageStoreConfig messageStoreConfig
     ) {
+        // 将传进来的各种config赋值
         this.brokerConfig = brokerConfig;
         this.nettyServerConfig = nettyServerConfig;
         this.nettyClientConfig = nettyClientConfig;
         this.messageStoreConfig = messageStoreConfig;
-        this.consumerOffsetManager = new ConsumerOffsetManager(this);
-        this.topicConfigManager = new TopicConfigManager(this);
-        this.pullMessageProcessor = new PullMessageProcessor(this);
-        this.pullRequestHoldService = new PullRequestHoldService(this);
-        this.messageArrivingListener = new NotifyMessageArrivingListener(this.pullRequestHoldService);
-        this.consumerIdsChangeListener = new DefaultConsumerIdsChangeListener(this);
-        this.consumerManager = new ConsumerManager(this.consumerIdsChangeListener);
-        this.consumerFilterManager = new ConsumerFilterManager(this);
-        this.producerManager = new ProducerManager();
-        this.clientHousekeepingService = new ClientHousekeepingService(this);
+
+        // 很多实例传入this(BrokerControoler实例)很多时候是为了拿到相关配置
+        this.consumerOffsetManager = new ConsumerOffsetManager(this); // 对应consumerOffset.json的配置管理
+        this.topicConfigManager = new TopicConfigManager(this); // 对应topics.json的配置管理，新建TopicConfigManager实例是会维护topicConfigTable
+        this.pullMessageProcessor = new PullMessageProcessor(this); // PullMessageProcessor跟consumer消息拉取逻辑有关
+        this.pullRequestHoldService = new PullRequestHoldService(this); // PullRequestHoldService线程即长轮询机制实现有关
+        this.messageArrivingListener = new NotifyMessageArrivingListener(this.pullRequestHoldService); // 当有新消息到达时，会间接"通知唤醒"consumer的长轮询channel，持有pullRequestHoldService引用，最终通知实现还是委托给pullRequestHoldService这个哥们
+        this.consumerIdsChangeListener = new DefaultConsumerIdsChangeListener(this); // ConsumerIds变化监听器
+        this.consumerManager = new ConsumerManager(this.consumerIdsChangeListener); // ConsumerManager实例有个consumerTable维护consumer相关信息，并持有consumerIdsChangeListener引用，有相关事件发生时会转发到consumerIdsChangeListener的监听方法中
+        this.consumerFilterManager = new ConsumerFilterManager(this); // ConsumerFilterManager含有filterDataByTopic集合
+        this.producerManager = new ProducerManager(); // ProducerManager实例含有groupChannelTable
+        this.clientHousekeepingService = new ClientHousekeepingService(this);// ClientHousekeepingService每隔10秒扫描出ConsumerManager,ConsumerFilterManager和ProducerManager管理的not active的channel并移除
         this.broker2Client = new Broker2Client(this);
         this.subscriptionGroupManager = new SubscriptionGroupManager(this);
         this.brokerOuterAPI = new BrokerOuterAPI(nettyClientConfig);

@@ -60,6 +60,7 @@ public class BrokerConfig {
      * thread numbers for send message thread pool, since spin lock will be used by default since 4.0.x, the default
      * value is 1.
      */
+    // 各种线程池数量的设置
     private int sendMessageThreadPoolNums = 1; //16 + Runtime.getRuntime().availableProcessors() * 4;
     private int pullMessageThreadPoolNums = 16 + Runtime.getRuntime().availableProcessors() * 2;
     private int processReplyMessageThreadPoolNums = 16 + Runtime.getRuntime().availableProcessors() * 2;
@@ -93,7 +94,7 @@ public class BrokerConfig {
     private int endTransactionPoolQueueCapacity = 100000;
 
     private int filterServerNums = 0;
-
+    // 默认开启长轮询
     private boolean longPollingEnable = true;
 
     private long shortPollingTimeMills = 1000;
@@ -156,26 +157,26 @@ public class BrokerConfig {
      * This configurable item defines interval of topics registration of broker to name server. Allowing values are
      * between 10, 000 and 60, 000 milliseconds.
      */
-    private int registerNameServerPeriod = 1000 * 30;
+    private int registerNameServerPeriod = 1000 * 30; // 向nameServer注册心跳的间隔
 
     /**
      * The minimum time of the transactional message  to be checked firstly, one message only exceed this time interval
      * that can be checked.
      */
     @ImportantField
-    private long transactionTimeOut = 6 * 1000;
+    private long transactionTimeOut = 6 * 1000; // 第一次检查producer事务的时间间隔
 
     /**
      * The maximum number of times the message was checked, if exceed this value, this message will be discarded.
      */
     @ImportantField
-    private int transactionCheckMax = 15;
+    private int transactionCheckMax = 15; // 检查producer事务的最大次数
 
     /**
      * Transaction message check interval.
      */
     @ImportantField
-    private long transactionCheckInterval = 60 * 1000;
+    private long transactionCheckInterval = 60 * 1000; // 检查producer事务的时间间隔
 
     /**
      * Acl feature switch

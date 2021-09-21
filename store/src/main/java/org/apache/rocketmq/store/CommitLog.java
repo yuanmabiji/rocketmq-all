@@ -1372,7 +1372,7 @@ public class CommitLog {
     }
 
     public static class GroupCommitRequest {
-        private final long nextOffset;
+        private final long nextOffset; // 下次刷盘的commitLog偏移量
         private CompletableFuture<PutMessageStatus> flushOKFuture = new CompletableFuture<>();
         private final long startTimestamp = System.currentTimeMillis();
         private long timeoutMillis = Long.MAX_VALUE;
@@ -1405,16 +1405,18 @@ public class CommitLog {
      * GroupCommit Service
      */
     class GroupCommitService extends FlushCommitLogService {
-        private volatile List<GroupCommitRequest> requestsWrite = new ArrayList<GroupCommitRequest>();
-        private volatile List<GroupCommitRequest> requestsRead = new ArrayList<GroupCommitRequest>();
-
+        private volatile List<GroupCommitRequest> requestsWrite = new ArrayList<GroupCommitRequest>(); // 同步刷盘时的requestsWrite集合，用于暂存同步刷盘request请求
+        private volatile List<GroupCommitRequest> requestsRead = new ArrayList<GroupCommitRequest>(); // 同步刷盘时的requestsRead集合，用于同步刷盘线程刷盘时读取刷盘请求request 【重要】因为ArrayList非线程安全，这样设计两个集合可以避免任务提交和任务执行的锁冲突 TODO 待分析
+        // 这个方法被broker写commitLog内存的线程调用，将刷盘request加入requestWrite集合，其中刷盘request记录下次刷盘的commitLog偏移量
         public synchronized void putRequest(final GroupCommitRequest request) {
             synchronized (this.requestsWrite) {
                 this.requestsWrite.add(request);
             }
-            this.wakeup();
+            this.wakeup();// 唤醒GroupCommitService线程，虽然GroupCommitService线程的await也是带超时的
         }
-
+        // QUESTION:这里将requestsWrite集合赋给requestsRead集合可以理解，为何requestsRead集合还要赋值给requestsWrite集合？
+        // ANSWER:因为刷盘线程每次刷盘后都会清空requestsRead集合，此时调用swapRequests方法也是刷盘线程的onWaitEnd方法调用的，
+        // 因此将requestsRead集合还要赋值给requestsWrite集合相当于清空requestsWrite集合的数据，以便下次客户端添加刷盘请求用。
         private void swapRequests() {
             List<GroupCommitRequest> tmp = this.requestsWrite;
             this.requestsWrite = this.requestsRead;
@@ -1423,7 +1425,7 @@ public class CommitLog {
 
         private void doCommit() {
             synchronized (this.requestsRead) {
-                if (!this.requestsRead.isEmpty()) {
+                if (!this.requestsRead.isEmpty()) { // 这个对应于同步刷盘，只有同步刷盘才需要利用requestsRead集合
                     for (GroupCommitRequest req : this.requestsRead) {
                         // There may be a message in the next file, so a maximum of
                         // two times the flush
@@ -1431,13 +1433,13 @@ public class CommitLog {
                         for (int i = 0; i < 2 && !flushOK; i++) {
                             // 如果mappedFileQueue的flushedWhere刷盘指针大于要刷盘的flushedWhere指针，说明已经刷盘完毕了 TODO QUESTION:flushedWhere刷盘指针赋值好像总是调用flush方法才会被赋值，但是记得MappedByteBuffer有时即使在不显式调用force的情况下，操作系统也会不定时的刷盘，此时又是如何更新flushedWhere刷盘指针的呢？还有force方法是同步阻塞 吗？待分析
                             flushOK = CommitLog.this.mappedFileQueue.getFlushedWhere() >= req.getNextOffset();
-
+                            // 进行刷盘
                             if (!flushOK) {
-                                CommitLog.this.mappedFileQueue.flush(0);
+                                CommitLog.this.mappedFileQueue.flush(0); // 刷盘后会更新flushedWhere的值，再次循环的话flushOK将会赋值true
                             }
                         }
 
-                        req.wakeupCustomer(flushOK ? PutMessageStatus.PUT_OK : PutMessageStatus.FLUSH_DISK_TIMEOUT);
+                        req.wakeupCustomer(flushOK ? PutMessageStatus.PUT_OK : PutMessageStatus.FLUSH_DISK_TIMEOUT); // 实质调用this.flushOKFuture.complete(putMessageStatus);，此时main线程结束阻塞
                     }
 
                     long storeTimestamp = CommitLog.this.mappedFileQueue.getStoreTimestamp();
@@ -1446,7 +1448,7 @@ public class CommitLog {
                     }
 
                     this.requestsRead.clear();
-                } else {
+                } else {// 这里相当于异步刷盘
                     // Because of individual messages is set to not sync flush, it
                     // will come to this process
                     CommitLog.this.mappedFileQueue.flush(0);
@@ -1456,10 +1458,10 @@ public class CommitLog {
 
         public void run() {
             CommitLog.log.info(this.getServiceName() + " service started");
-
+            // 在没有stopped的情况下，一直while循环
             while (!this.isStopped()) {
                 try {
-                    this.waitForRunning(10);
+                    this.waitForRunning(10); // 在没有notified的情况下，会等待10毫秒；有Notified的情况下，无须等待。不管有无notified，都会调用onWaitEnd方法来交换requestsWrite和requestsRead集合的数据，以便requestsRead的数据被刷盘
                     this.doCommit();
                 } catch (Exception e) {
                     CommitLog.log.warn(this.getServiceName() + " service has exception. ", e);

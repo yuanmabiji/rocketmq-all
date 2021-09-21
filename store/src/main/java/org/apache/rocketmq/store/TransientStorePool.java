@@ -28,6 +28,10 @@ import org.apache.rocketmq.store.config.MessageStoreConfig;
 import org.apache.rocketmq.store.util.LibC;
 import sun.nio.ch.DirectBuffer;
 
+/**
+ * 参考：https://www.cnblogs.com/lccsblog/p/12221661.html
+ * 总得来说 有些像页高速缓存那样，为了避免页面被换出到交换区，mq申请了一块内存，并且用指定这些页面不能被操作系统换出，然后将这些内存分配给业务使用
+ */
 public class TransientStorePool {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
@@ -44,6 +48,7 @@ public class TransientStorePool {
     }
 
     /**
+     * 创建poolSize个堆外内存，并利用com.sun.jna.Library类库将该批内存进行锁定，避免被置换到交换区，来提高存储性能。TODO QEUSTION:有空研究下
      * It's a heavy init method.
      */
     public void init() {

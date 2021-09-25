@@ -1,3 +1,7 @@
+参考资料文章：
+DLedger —基于 raft 协议的 commitlog 存储库
+https://zhuanlan.zhihu.com/p/77166786
+
 # Dledger快速搭建
 ---
 ### 前言

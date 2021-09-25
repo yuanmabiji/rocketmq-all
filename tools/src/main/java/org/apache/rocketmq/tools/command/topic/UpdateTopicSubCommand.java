@@ -136,6 +136,7 @@ public class UpdateTopicSubCommand implements SubCommand {
                 String addr = commandLine.getOptionValue('b').trim();
 
                 defaultMQAdminExt.start();
+                // TODO QUESTION:这句代码最终会调用this.remotingClient.invokeSync向broker发起创建topic的网络请求，疑问：MQAdminStartUp这个Main类启动时并没有初始化remotingClient这个实例，是怎么做到做到的？还有rocketmq的这些运维命令是部署在哪台服务器上？broker?namserver?
                 defaultMQAdminExt.createAndUpdateTopicConfig(addr, topicConfig);
 
                 if (isOrder) {
